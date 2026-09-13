@@ -71,6 +71,19 @@ gh issue edit <N> --add-assignee @me
   only #12 is a blocker; the trailing #15 is prose. There is no `Blocks #N`: dependencies are
   declared from the blocked side only.
 
+### Those `ck3_chronicler-27ov.76` ids in the comments
+
+Comments and docs all over this repo cite identifiers like `ck3_chronicler-27ov.76` or
+`ck3_chronicler-ihkv`. They point at the private tracker this project used before it moved
+to GitHub Issues, and that tracker did not come with it, so looking one up will find you
+nothing. There are 1,527 of these references to 307 distinct ids, in 325 of the 526 tracked
+files.
+
+They stay anyway. Each one marks a decision that had a reason, and the comment around the id
+almost always states that reason in full, which is the part you actually needed. Read the
+comment, ignore the id. New code should cite a GitHub issue number instead.
+
+
 ## Memories
 
 `.memories/` holds durable project knowledge as one fact per file, committed and grep-able.
