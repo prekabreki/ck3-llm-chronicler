@@ -1,0 +1,114 @@
+﻿# Universal emission helpers. One scripted_effect per event type.
+#
+# Every helper:
+#   - is gated on chronicler_is_relevant (placeholder until v0.4)
+#   - calls debug_log with a LOCALIZATION KEY (not a string literal).
+#     Data functions like [ROOT.Char.GetID] only interpolate when the
+#     loc engine processes the value — they are NOT expanded in
+#     debug_log = "literal" form. Verified during v0.1 smoke: literal
+#     strings emit ERROR:[ROOT.GetID] verbatim (the loc engine sees the
+#     [...] and tries to call CHRONICLER as a function).
+#   - keeps the body tiny because scripted_effects hot-reload under
+#     -debug_mode -develop, but on_actions do not (research §1.5)
+#
+# The loc keys live in localization/english/chronicler_l_english.yml.
+# Wire format is pipe-delimited key=value pairs starting with the bare
+# CHRONICLER tag (no brackets — those would be parsed as data
+# functions). See docs/schema_versions.md.
+#
+# Two-line emission per event: the tagged loc line (statics + globals
+# only) followed immediately by debug_log_scopes = yes, which makes
+# the engine dump the current scope tree to debug.log. The Python
+# tailer pairs them by line proximity (see chronicler.tailer.parser)
+# and extracts the primary character + named-scope participants from
+# the dump. Rationale: debug_log resolves loc keys with NO script
+# scope context, so we cannot interpolate ROOT/THIS/named scopes into
+# our line. Verified V01-S04 via diagnostic probes.
+
+chronicler_emit_death = {
+	if = {
+		limit = { chronicler_is_relevant = yes }
+		debug_log = chronicler_emit_death_log
+		debug_log_scopes = yes
+	}
+}
+
+chronicler_emit_birth = {
+	if = {
+		limit = { chronicler_is_relevant = yes }
+		debug_log = chronicler_emit_birth_log
+		debug_log_scopes = yes
+	}
+}
+
+chronicler_emit_marriage = {
+	if = {
+		limit = { chronicler_is_relevant = yes }
+		debug_log = chronicler_emit_marriage_log
+		debug_log_scopes = yes
+	}
+}
+
+chronicler_emit_divorce = {
+	if = {
+		limit = { chronicler_is_relevant = yes }
+		debug_log = chronicler_emit_divorce_log
+		debug_log_scopes = yes
+	}
+}
+
+chronicler_emit_title_gain = {
+	if = {
+		limit = { chronicler_is_relevant = yes }
+		debug_log = chronicler_emit_title_gain_log
+		debug_log_scopes = yes
+	}
+}
+
+chronicler_emit_title_lost = {
+	if = {
+		limit = { chronicler_is_relevant = yes }
+		debug_log = chronicler_emit_title_lost_log
+		debug_log_scopes = yes
+	}
+}
+
+chronicler_emit_war_started = {
+	if = {
+		limit = { chronicler_is_relevant = yes }
+		debug_log = chronicler_emit_war_started_log
+		debug_log_scopes = yes
+	}
+}
+
+chronicler_emit_war_won_attacker = {
+	if = {
+		limit = { chronicler_is_relevant = yes }
+		debug_log = chronicler_emit_war_won_attacker_log
+		debug_log_scopes = yes
+	}
+}
+
+chronicler_emit_war_won_defender = {
+	if = {
+		limit = { chronicler_is_relevant = yes }
+		debug_log = chronicler_emit_war_won_defender_log
+		debug_log_scopes = yes
+	}
+}
+
+chronicler_emit_imprison = {
+	if = {
+		limit = { chronicler_is_relevant = yes }
+		debug_log = chronicler_emit_imprison_log
+		debug_log_scopes = yes
+	}
+}
+
+chronicler_emit_release = {
+	if = {
+		limit = { chronicler_is_relevant = yes }
+		debug_log = chronicler_emit_release_log
+		debug_log_scopes = yes
+	}
+}

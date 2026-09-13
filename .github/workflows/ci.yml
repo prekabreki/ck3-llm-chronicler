@@ -1,0 +1,162 @@
+name: CI
+
+# The quality gate the repo lacked since bootstrap (ck3_chronicler-27ov.16).
+# Runs on every push to master and on PRs.
+#
+# Issue #26: both jobs run on windows-latest AND ubuntu-latest. The old
+# Windows-only premise ("the only platform Chronicler runs on") was already
+# false — launch.sh and scripts/fetch-tools.sh are POSIX, and the public
+# release (#18) claims cross-platform support, which needs a green Linux leg
+# to mean anything. Windows stays first in the matrix as the platform the
+# owner plays on.
+#
+# CI is deliberately hermetic: rakaly and ck3-tiger are never fetched here,
+# and no *.ck3 fixtures are tracked, so the golden-save and parse-worker
+# tests skip themselves on both platforms rather than being platform-gated.
+# Issue #41 made that honest: those skips are *declared* in tests/conftest.py
+# as local-only and printed by name at the end of every run, and any skip
+# outside the declared table fails the job (CHRONICLER_STRICT_SKIPS below).
+
+# Both branch names on purpose: this repo is on `master`, the public release
+# repo (#18) is on `main`, and the workflow travels between them unchanged. A
+# single-branch trigger meant the public repo had a CI file that could never
+# fire, which is worse than no CI file: the cross-platform claim above reads as
+# verified while nothing verifies it.
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+# A newer push to the same ref supersedes an in-flight run.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    name: Python — ruff + pytest (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # Never let one platform's failure cancel the other's. A cross-platform
+      # bug is usually one-sided, and knowing whether the other leg also broke
+      # is the whole point of having two — fail-fast would throw that away.
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install uv
+        # Pinned to a full version, not a floating @v8 major: setup-uv's
+        # v8 "immutable releases" change stopped publishing the moving
+        # major tag, so @v8 fails to resolve (checkout/setup-node still
+        # publish floating majors, hence @v6 below).
+        uses: astral-sh/setup-uv@v8.2.0
+        with:
+          enable-cache: true
+
+      - name: Install Python 3.11
+        run: uv python install 3.11
+
+      # Issue #53: the `pdf` extra is what makes real PDF *generation* testable.
+      # Its chain is xhtml2pdf → svglib → rlPyCairo → pycairo, and pycairo ships
+      # wheels for Windows only (cp311 win_amd64 exists; verified against the
+      # PyPI file list for 1.29.0). On Linux it is an sdist, so it compiles
+      # against the system cairo headers and needs them by name — the runner
+      # image happens to carry cairo today, but an image that quietly drops it
+      # would put these tests back to skipping, and the point of this issue was
+      # that a skip is not a pass.
+      - name: Install cairo headers for pycairo (Linux sdist build)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libcairo2-dev pkg-config
+
+      - name: Sync dependencies (incl. dev group and the pdf extra)
+        run: uv sync --extra pdf
+
+      - name: ruff check
+        run: uv run ruff check .
+
+      - name: ruff format --check
+        run: uv run ruff format --check .
+
+      # Issue #41: four tests in tests/unit/test_api_io.py assert on the
+      # SPA that `chronicler serve` actually ships — real Vite output at
+      # src/chronicler/api/static/app/. That directory is build output and
+      # tracks zero files, so before this step those four skipped in CI and
+      # in every fresh clone, and only ever ran on the owner's machine.
+      #
+      # Built here rather than passed from the Frontend job as an artifact,
+      # which would make this job `needs:` that one and turn two parallel
+      # jobs into a serial chain — the build costs less than the wait. And
+      # built rather than faked: a synthesized index.html would satisfy the
+      # assertions without proving anything about the shipped bundle.
+      #
+      # A build failure fails this job. It is a plain `run:` step, so a
+      # non-zero exit stops the job before pytest — the skip can never come
+      # back disguised as green.
+      - name: Install Node (for the SPA build the API tests serve)
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build the SPA into src/chronicler/api/static/app
+        working-directory: frontend
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+
+      - name: pytest
+        # CHRONICLER_STRICT_SKIPS: an *undeclared* skip fails the run. Every
+        # skip this suite may emit is declared in tests/conftest.py, split
+        # into by-design (platform / optional-extra branches) and local-only
+        # (needs a real .ck3 + the rakaly binary, which CI never fetches).
+        # Anything outside that table is coverage that went missing, and
+        # without this it would have shown up as a bare number nobody reads.
+        env:
+          CHRONICLER_STRICT_SKIPS: '1'
+        run: uv run pytest -q -rs
+
+  frontend:
+    name: Frontend — lint + build + test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Node
+        uses: actions/setup-node@v6
+        with:
+          # Match the dev environment (node 24 / npm 11). Older npm
+          # majors re-resolve the @emnapi/* optional deps differently and
+          # reject the committed lockfile under `npm ci`.
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install deps
+        # `npm install`, not `npm ci`: the @emnapi/* optional deps (wasm
+        # fallbacks pulled transitively) resolve to different patch
+        # versions across machines and over time, so a committed lock that
+        # `npm ci` accepts goes stale within days (npm's known optional-dep
+        # lockfile non-determinism). npm install reconciles the lock as a
+        # starting point instead of hard-failing on the drift.
+        run: npm install --no-audit --no-fund
+
+      - name: eslint
+        run: npm run lint
+
+      - name: build (tsc -b && vite build)
+        run: npm run build
+
+      - name: vitest
+        run: npm run test

@@ -1,0 +1,190 @@
+/* polish-additions.css — page-level refinements paired with the new
+ * Ornaments component. Append/import AFTER library.css, overview.css,
+ * and biographies.css so these rules win the cascade.
+ *
+ * Three blocks:
+ *   1. Library — hero band sizing tweaks + section-header glyph
+ *   2. Overview — watermark positioning, hero override, nav-slot glyph
+ *   3. Biographies — header padding for inset corner ornaments
+ */
+
+/* ============== Library ============== */
+
+.library-frontispiece {
+  margin-top: 8px;
+  margin-bottom: 28px;
+}
+.library-frontispiece .hero-band__title {
+  font-size: clamp(48px, 5.4vw, 64px);
+}
+/* Optical centering: the shield SVG is top-heavy (chief is denser than
+ * base), so geometric center reads as a few px high inside the
+ * cartouche rays. Nudge the inner content down so it sits visually
+ * centered against the sunburst halo. */
+.library-frontispiece .cartouche__inner {
+  transform: translateY(20px);
+}
+
+.library-page__header { display: none; }   /* replaced by frontispiece */
+.library-page__fleuron { margin: 12px 0 24px; }
+
+.library-section-header__glyph {
+  font-family: var(--font-display);
+  font-size: 16px;
+  color: var(--gold-deep);
+  line-height: 1;
+}
+.library-section-header__count::before { content: '· '; opacity: 0.6; }
+
+.lib-card {
+  /* slightly thicker gold-tinted hairline; matches the hero band's frame */
+  border: 1px solid color-mix(in oklab, var(--rule) 60%, var(--gold-deep));
+}
+.lib-card__shield {
+  /* polish pass: bigger arms on each card. The grid template was 56px;
+     bump to 72px so the heraldry reads first on the card. */
+  width: 72px;
+  height: 84px;
+}
+.lib-card__head {
+  grid-template-columns: 72px minmax(0, 1fr);
+}
+
+/* ============== Overview ============== */
+
+.overview-page__inner {
+  /* polish pass: wider hero room */
+  max-width: 1040px;
+}
+
+.overview-hero {
+  /* override the old grid-template-columns; the hero-band chassis handles layout */
+  padding: 56px 64px 52px;
+}
+.overview-hero__watermark {
+  /* anchor the huge ghost shield to the right edge, vertically centered */
+  right: -120px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 520px;
+  height: 600px;
+  display: grid;
+  place-items: center;
+}
+[data-theme='dark'] .overview-hero__watermark { opacity: 0.12; }
+
+.overview-hero__title {
+  font-family: var(--font-display);
+  font-size: clamp(48px, 5.6vw, 68px);
+  line-height: 1.0;
+  letter-spacing: -0.005em;
+  margin: 0;
+}
+.overview-hero__ruler {
+  font-size: 20px;
+  color: var(--ink-soft);
+}
+
+.overview-stats {
+  /* polish pass: paper card around the stats grid + gilded hairlines */
+  padding: 22px 28px;
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  outline: 1px solid var(--rule-soft);
+  outline-offset: 4px;
+}
+.overview-stat__n {
+  font-size: 36px;
+  font-feature-settings: 'lnum' 1, 'tnum' 1;
+}
+
+.overview-nav__slot {
+  /* polish pass: a little more vertical air + leading gold pip */
+  padding: 22px 24px 20px;
+  position: relative;
+  border: 1px solid var(--rule);
+}
+.overview-nav__slot-glyph {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  color: var(--gold-deep);
+  font-size: 12px;
+  opacity: 0.55;
+}
+.overview-nav__slot-label {
+  font-size: 22px;
+}
+.overview-nav__slot-desc { max-width: 36ch; }
+
+/* ============== Biographies ============== */
+
+.biographies-page__inner {
+  max-width: 920px;
+}
+.biographies-page__header {
+  padding: 28px 36px 24px;
+  border: 1px solid var(--rule-soft);
+  background: color-mix(in oklab, var(--paper) 92%, white);
+  /* room for inset 64px corner ornaments at all four corners */
+  padding-left: 80px;
+  padding-right: 80px;
+  /* defensive: the original biographies.css sets display: flex which
+   * is fine, but it doesn't set position. Force relative so the
+   * .corner-frame wrapper pins to this header. */
+  position: relative;
+  min-height: 140px;
+}
+[data-theme='dark'] .biographies-page__header {
+  background: color-mix(in oklab, var(--paper) 88%, black);
+}
+.biographies-page__title {
+  font-size: 42px;
+  margin: 8px 0 6px;
+}
+.biographies-page__lede { max-width: 60ch; }
+
+.biographies-row__btn {
+  /* polish pass: gold-tinted hairline + a touch more padding */
+  padding: 20px 22px;
+  grid-template-columns: 64px 1fr;
+  gap: 22px;
+  border: 1px solid color-mix(in oklab, var(--rule-soft) 70%, var(--gold-deep));
+}
+.biographies-row__shield {
+  filter:
+    drop-shadow(0 1px 0 rgba(0, 0, 0, 0.25))
+    drop-shadow(0 4px 6px rgba(0, 0, 0, 0.18))
+    drop-shadow(0 10px 14px rgba(0, 0, 0, 0.12));
+}
+[data-theme='dark'] .biographies-row__shield {
+  filter:
+    drop-shadow(0 1px 0 rgba(0, 0, 0, 0.45))
+    drop-shadow(0 4px 6px rgba(0, 0, 0, 0.35))
+    drop-shadow(0 10px 14px rgba(0, 0, 0, 0.25));
+}
+.biographies-row__name {
+  font-size: 24px;
+}
+.biographies-row__excerpt {
+  margin-top: 6px;
+  font-family: var(--font-prose);
+  font-size: 17px;
+  line-height: 1.55;
+  color: var(--ink-soft);
+  text-wrap: pretty;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ============== Theme polish (both themes get the same care) ============== */
+
+/* Slightly richer paper bias on light theme so the gold reads warmer */
+:root {
+  --paper-tint: color-mix(in oklab, var(--paper) 88%, var(--gold-glow) 12%);
+}
+[data-theme='dark'] {
+  --paper-tint: color-mix(in oklab, var(--paper) 92%, var(--gold-deep) 8%);
+}

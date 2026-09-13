@@ -1,0 +1,43 @@
+/* ck3_chronicler-kgqa: tail-status badge. Tone-driven colour; mirrors
+   the existing appbar pip sizing so the topbar layout is unchanged. */
+.tail-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--rule);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  background: var(--paper);
+  color: var(--ink);
+  white-space: nowrap;
+}
+.tail-badge:disabled { cursor: default; opacity: 0.7; }
+.tail-badge:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.tail-badge__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+/* ck3_chronicler-0o23: tone accents use the heraldic theme tokens
+   (each carries its own [data-theme=dark] variant in tokens.css), so
+   status colors adapt to dark vellum instead of staying hardcoded. */
+.tail-badge--green {
+  color: var(--vert);
+  border-color: color-mix(in oklab, var(--vert) 25%, transparent);
+}
+.tail-badge--amber {
+  color: var(--gold);
+  border-color: color-mix(in oklab, var(--gold) 25%, transparent);
+}
+.tail-badge--red {
+  color: var(--carmine);
+  border-color: color-mix(in oklab, var(--carmine) 25%, transparent);
+}
+.tail-badge--gray {
+  color: var(--ink-muted);
+  border-color: color-mix(in oklab, var(--ink-muted) 25%, transparent);
+}

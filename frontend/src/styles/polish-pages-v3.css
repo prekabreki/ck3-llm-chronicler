@@ -1,0 +1,360 @@
+/* polish-pages-v3.css — second-sweep page polish.
+ *
+ * Layers AFTER ornaments.css and polish-additions.css. Touches:
+ *   - Closing (cartouche-frame the wax-sealed arms + 4 corner ornaments)
+ *   - Chronicle (kill the legacy single corner, add 4-corner frame)
+ *   - Dynasty (cartouche around the dynasty arms hero)
+ *   - Hall of Fame (page header polish + medallion cards)
+ *
+ * The corresponding page TSX edits are tiny — see polish-pages-v3.patch.
+ */
+
+/* ============== Closing ============== */
+
+.closing-frontispiece {
+  /* room for 4 corner ornaments (88px @ inset 14px) */
+  padding: 64px 96px 56px;
+}
+.closing-frontispiece__shield-wrap {
+  display: grid;
+  place-items: center;
+  margin-bottom: 28px;
+}
+/* When the shield sits inside our cartouche, the old shield CSS still
+ * applies — kill the redundant filter so we don't double up shadows. */
+.closing-frontispiece .cartouche .closing-frontispiece__shield {
+  filter: none;
+  margin-bottom: 0;
+}
+/* Optical centering inside the sunburst */
+.closing-frontispiece .cartouche__inner {
+  transform: translateY(20px);
+}
+
+/* ============== Chronicle ============== */
+
+/* Legacy single corner — the new 4-corner frame replaces it. */
+.chronicle-page__corner { display: none !important; }
+
+.chronicle-page__main {
+  /* corners inset 12px @ 64px each side → keep main content clear */
+  padding-top: 56px;
+  padding-right: 80px;
+}
+
+/* Soft watermark of the character's arms behind the title block. */
+.chronicle-page__watermark {
+  position: absolute;
+  right: -80px;
+  top: -40px;
+  width: 360px;
+  height: 420px;
+  opacity: 0.05;
+  pointer-events: none;
+  z-index: 0;
+  display: grid;
+  place-items: center;
+}
+[data-theme='dark'] .chronicle-page__watermark { opacity: 0.09; }
+.chronicle-page__title-block,
+.chronicle-page__tabs,
+.chronicle-vita,
+.chronicle-events {
+  position: relative;
+  z-index: 1;
+}
+
+/* ============== Dynasty ============== */
+
+.dyn-wall-hero {
+  /* hero band with the cartouche-framed dynasty arms — mirrors the
+   * library frontispiece layout */
+  position: relative;
+}
+.dyn-wall-hero .cartouche {
+  margin-inline: auto;
+}
+.dyn-wall-hero .cartouche__inner {
+  transform: translateY(6px);
+}
+
+/* Optical centering for the dynasty hero shield inside its cartouche.
+ * Same nudge as Library / Closing — top-heavy chief sits a few px
+ * high against the symmetric sunburst halo. */
+.dynasty-hero .cartouche__inner,
+.dynasty-hero__shield .cartouche__inner,
+.overview-hero .cartouche__inner,
+.hero-band .cartouche__inner {
+  transform: translateY(20px);
+}
+
+/* Dynasty action buttons — were small, left-crammed, and wrapped
+ * awkwardly. Treat them as a proper toolbar: paper card, gold-tinted
+ * hairline, fleuron-flanked group, no orphan wraps.
+ * Same vocabulary applied to Campaign Overview (.overview-page). */
+.dynasty-page .btn,
+.dynasty-hero .btn,
+.dynasty-vita__entry .btn,
+.overview-page .btn,
+.overview-stats .btn,
+.overview-nav .btn {
+  font-family: var(--font-ui);
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  padding: 10px 18px;
+  border: 1px solid color-mix(in oklab, var(--rule) 50%, var(--gold-deep));
+  background: color-mix(in oklab, var(--paper) 88%, white);
+  color: var(--ink);
+  white-space: nowrap;
+  transition: background 140ms ease, border-color 140ms ease,
+              transform 140ms ease, box-shadow 140ms ease;
+}
+[data-theme='dark'] .dynasty-page .btn,
+[data-theme='dark'] .dynasty-hero .btn,
+[data-theme='dark'] .dynasty-vita__entry .btn,
+[data-theme='dark'] .overview-page .btn {
+  background: color-mix(in oklab, var(--paper) 88%, black);
+}
+.dynasty-page .btn:hover,
+.dynasty-hero .btn:hover,
+.dynasty-vita__entry .btn:hover,
+.overview-page .btn:hover {
+  border-color: var(--gold-deep);
+  background: color-mix(in oklab, var(--paper) 80%, var(--gold-glow));
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(74, 54, 22, 0.12);
+}
+[data-theme='dark'] .dynasty-page .btn:hover,
+[data-theme='dark'] .overview-page .btn:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.40);
+}
+/* primary action — gold-filled */
+.dynasty-page .btn--primary,
+.dynasty-hero .btn--primary,
+.overview-page .btn--primary {
+  background: var(--gold-deep);
+  border-color: var(--gold-deep);
+  color: var(--paper);
+}
+.dynasty-page .btn--primary:hover,
+.overview-page .btn--primary:hover {
+  background: color-mix(in oklab, var(--gold-deep) 86%, black);
+  color: var(--paper);
+}
+
+/* Wrap any sibling buttons into a proper toolbar with explicit gap so
+ * the "random page break" goes away (gap + wrap is deterministic). */
+.dynasty-hero__actions,
+.dynasty-page__toolbar,
+.dynasty-vita__entry-actions,
+.overview-page__toolbar,
+.overview-hero__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--rule-soft);
+  border-bottom: 1px solid var(--rule-soft);
+  position: relative;
+}
+.dynasty-hero__actions::before,
+.dynasty-page__toolbar::before,
+.overview-page__toolbar::before,
+.overview-hero__actions::before {
+  content: '✦';
+  color: var(--gold-deep);
+  font-size: 11px;
+  opacity: 0.55;
+  margin-right: 4px;
+}
+
+/* Defensive catch-all: any flex/inline-block button row inside these
+ * pages that isn't wrapped above gets gap-spacing via :has() so we
+ * don't leave existing rows broken. */
+.dynasty-page *:has(> .btn + .btn),
+.overview-page *:has(> .btn + .btn) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+/* The Campaign Overview's primary interactive surfaces aren't `.btn`
+ * elements — they're `.overview-nav__slot` cards. Apply the same
+ * gold-edged paper-card vocabulary to them so they read as deliberate
+ * buttons rather than generic links. */
+.overview-nav {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+  margin-top: 22px;
+}
+.overview-nav__slot {
+  font-family: var(--font-ui);
+  padding: 28px 28px 24px;
+  background: color-mix(in oklab, var(--paper) 88%, white);
+  border: 1px solid color-mix(in oklab, var(--rule) 50%, var(--gold-deep));
+  position: relative;
+  text-align: center;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 130px;
+  transition: background 140ms ease, border-color 140ms ease,
+              transform 140ms ease, box-shadow 140ms ease;
+}
+[data-theme='dark'] .overview-nav__slot {
+  background: color-mix(in oklab, var(--paper) 88%, black);
+}
+.overview-nav__slot:hover,
+.overview-nav__slot:focus-visible {
+  border-color: var(--gold-deep);
+  background: color-mix(in oklab, var(--paper) 80%, var(--gold-glow));
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(74, 54, 22, 0.12);
+  outline: none;
+}
+[data-theme='dark'] .overview-nav__slot:hover {
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45);
+}
+.overview-nav__slot-label {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 28px;
+  letter-spacing: 0.005em;
+  color: var(--ink);
+  line-height: 1.05;
+  margin-top: 2px;
+}
+.overview-nav__slot-desc {
+  font-family: var(--font-italic);
+  font-style: italic;
+  font-size: 16px;
+  color: var(--ink-soft);
+  line-height: 1.5;
+  max-width: 38ch;
+  margin: 2px auto 0;
+  text-align: center;
+}
+.overview-nav__slot-glyph {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  color: var(--gold-deep);
+  font-size: 12px;
+  opacity: 0.6;
+}
+/* Top-rule + bottom-rule gold hairline accent, evoking the page
+ * dividers used elsewhere in the chronicler. */
+.overview-nav__slot::before,
+.overview-nav__slot::after {
+  content: '';
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  height: 1px;
+  background: color-mix(in oklab, var(--gold-deep) 75%, transparent);
+  opacity: 0.45;
+  pointer-events: none;
+}
+.overview-nav__slot::before { top: 6px; }
+.overview-nav__slot::after  { bottom: 6px; }
+
+/* ============== Hall of Fame ============== */
+
+.page-header.ornamented {
+  padding: 48px 96px 32px;
+  border: 1px solid color-mix(in oklab, var(--rule) 60%, var(--gold-deep));
+  background:
+    radial-gradient(ellipse 70% 60% at 50% 0%, color-mix(in oklab, var(--gold-glow) 30%, transparent), transparent 70%),
+    var(--paper);
+  margin: 24px 28px 0;
+  min-height: 160px;
+}
+[data-theme='dark'] .page-header.ornamented {
+  background:
+    radial-gradient(ellipse 70% 60% at 50% 0%, rgba(80,60,30,0.30), transparent 70%),
+    var(--paper);
+}
+.page-header__title {
+  font-family: var(--font-display);
+  font-size: clamp(40px, 4.4vw, 56px);
+  letter-spacing: -0.005em;
+  text-wrap: balance;
+}
+
+/* Medallion frame around dynasty-card shields */
+.dyn-card__shield-cell {
+  position: relative;
+}
+.dyn-card__shield-cell::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 132px;
+  height: 132px;
+  transform: translate(-50%, calc(-50% - 3px));
+  border-radius: 50%;
+  border: 1px solid color-mix(in oklab, var(--gold-deep) 60%, transparent);
+  pointer-events: none;
+  opacity: 0.55;
+}
+.dyn-card__name {
+  /* a touch more breathing room above the name */
+  margin-top: 6px;
+}
+
+/* ====================================================================
+ * Light-mode rule visibility — direct targets
+ * --------------------------------------------------------------------
+ * Token-level darkening alone isn't enough; many surfaces hard-code
+ * the rule color via color-mix. Override the actual borders on the
+ * commonly-pale surfaces.
+ * ==================================================================== */
+
+body:not(.dark):not([data-theme="dark"]):not(.theme-dark) {
+  /* nav slot cards (Overview), library/biographies tile borders, etc. */
+  .overview-nav__slot,
+  .library-card,
+  .biographies-row,
+  .biographies-page__card,
+  .chronicle-page__card,
+  .codex-page__card,
+  .tracked-page__card,
+  .dynasty-page__card,
+  .dyn-card,
+  .hall-card,
+  .settings-card,
+  .prose-repo-card,
+  .stat-grid,
+  .overview-stats {
+    border-color: color-mix(in oklab, var(--ink, #2a2014) 32%,
+                            color-mix(in oklab, var(--gold-deep, #8a6a2a) 50%, transparent)) !important;
+  }
+
+  /* Internal hairlines (e.g. the underline rule on nav slots) */
+  .overview-nav__slot::after,
+  .biographies-row::after,
+  .library-card::after {
+    background-color: color-mix(in oklab, var(--gold-deep, #8a6a2a) 75%, transparent) !important;
+    opacity: 0.7 !important;
+  }
+}
+
+/* Generic dividers / hr — keep the original sweep but with stronger value */
+body:not(.dark):not([data-theme="dark"]):not(.theme-dark) hr,
+body:not(.dark):not([data-theme="dark"]):not(.theme-dark) .rule,
+body:not(.dark):not([data-theme="dark"]):not(.theme-dark) .hairline,
+body:not(.dark):not([data-theme="dark"]):not(.theme-dark) [class*="__rule"],
+body:not(.dark):not([data-theme="dark"]):not(.theme-dark) [class*="__divider"],
+body:not(.dark):not([data-theme="dark"]):not(.theme-dark) [class*="__separator"] {
+  border-color: color-mix(in oklab, var(--ink, #2a2014) 36%, transparent) !important;
+}

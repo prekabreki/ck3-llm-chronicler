@@ -1,0 +1,12 @@
+﻿l_english:
+ chronicler_emit_death_log:0 "CHRONICLER|v=1|t=death|d=[GetCurrentDate.GetStringLong]"
+ chronicler_emit_birth_log:0 "CHRONICLER|v=1|t=birth|d=[GetCurrentDate.GetStringLong]"
+ chronicler_emit_marriage_log:0 "CHRONICLER|v=1|t=marriage|d=[GetCurrentDate.GetStringLong]"
+ chronicler_emit_divorce_log:0 "CHRONICLER|v=1|t=divorce|d=[GetCurrentDate.GetStringLong]"
+ chronicler_emit_title_gain_log:0 "CHRONICLER|v=1|t=title_gain|d=[GetCurrentDate.GetStringLong]"
+ chronicler_emit_title_lost_log:0 "CHRONICLER|v=1|t=title_lost|d=[GetCurrentDate.GetStringLong]"
+ chronicler_emit_war_started_log:0 "CHRONICLER|v=1|t=war_started|d=[GetCurrentDate.GetStringLong]"
+ chronicler_emit_war_won_attacker_log:0 "CHRONICLER|v=1|t=war_won_attacker|d=[GetCurrentDate.GetStringLong]"
+ chronicler_emit_war_won_defender_log:0 "CHRONICLER|v=1|t=war_won_defender|d=[GetCurrentDate.GetStringLong]"
+ chronicler_emit_imprison_log:0 "CHRONICLER|v=1|t=imprison|d=[GetCurrentDate.GetStringLong]"
+ chronicler_emit_release_log:0 "CHRONICLER|v=1|t=release|d=[GetCurrentDate.GetStringLong]"

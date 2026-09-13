@@ -1,0 +1,117 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`Heraldry — procedural shield > renders a deterministic snapshot for the canary seed (Ælla, 12267) 1`] = `
+<span
+  class="shield"
+  style="width: 80px; height: 92px; display: inline-block;"
+>
+  <svg
+    aria-label="shield-12267"
+    height="92"
+    viewBox="0 0 80 96"
+    width="80"
+  >
+    <defs>
+      <clippath
+        id="clip-12267"
+      >
+        <path
+          d="M 4 4 L 76 4 L 76 36 C 76 60 60 78 40 92 C 20 78 4 60 4 36 Z"
+        />
+      </clippath>
+      <lineargradient
+        id="sheen-12267"
+        x1="0"
+        x2="1"
+        y1="0"
+        y2="1"
+      >
+        <stop
+          offset="0%"
+          stop-color="rgba(255,255,255,0.18)"
+        />
+        <stop
+          offset="50%"
+          stop-color="rgba(255,255,255,0)"
+        />
+        <stop
+          offset="100%"
+          stop-color="rgba(0,0,0,0.18)"
+        />
+      </lineargradient>
+    </defs>
+    <g
+      clip-path="url(#clip-12267)"
+    >
+      <rect
+        fill="#2C4DB0"
+        height="96"
+        width="80"
+        x="0"
+        y="0"
+      />
+      <rect
+        fill="#1B1714"
+        height="48"
+        width="40"
+        x="40"
+        y="0"
+      />
+      <rect
+        fill="#1B1714"
+        height="48"
+        width="40"
+        x="0"
+        y="48"
+      />
+      <g
+        fill="#C9A24A"
+        transform="translate(40 48)"
+      >
+        <circle
+          cx="7.347880794884119e-16"
+          cy="-12"
+          r="9"
+        />
+        <circle
+          cx="11.412678195541842"
+          cy="-3.7082039324993685"
+          r="9"
+        />
+        <circle
+          cx="7.053423027509678"
+          cy="9.70820393249937"
+          r="9"
+        />
+        <circle
+          cx="-7.053423027509677"
+          cy="9.70820393249937"
+          r="9"
+        />
+        <circle
+          cx="-11.412678195541844"
+          cy="-3.7082039324993676"
+          r="9"
+        />
+        <circle
+          fill="#7C5A14"
+          r="6"
+        />
+      </g>
+      <rect
+        fill="url(#sheen-12267)"
+        height="96"
+        width="80"
+        x="0"
+        y="0"
+      />
+    </g>
+    <path
+      d="M 4 4 L 76 4 L 76 36 C 76 60 60 78 40 92 C 20 78 4 60 4 36 Z"
+      fill="none"
+      stroke="#7C5A14"
+      stroke-width="1.5"
+    />
+  </svg>
+</span>
+`;

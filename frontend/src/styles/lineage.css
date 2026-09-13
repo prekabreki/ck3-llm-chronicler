@@ -1,0 +1,148 @@
+/* lineage.css — split from globals.css by audit F-16 / ck3_chronicler-npf1. Edit per-page styles here; primitives (paper, btn, tabs, …) stay in globals.css. */
+
+/* ---------- Phase 3: Lineage page ---------- */
+
+.lineage-page {
+  background: var(--paper-deep);
+  min-height: calc(100vh - 67px);
+  padding: 40px 28px 80px;
+}
+.lineage-page--empty {
+  display: grid;
+  place-items: center;
+  text-align: center;
+  color: var(--ink-muted);
+}
+.lineage-page__inner {
+  max-width: 1320px;
+  margin: 0 auto;
+}
+.lineage-page__error { color: var(--carmine-deep); }
+.lineage-page__header { margin-bottom: 18px; }
+.lineage-page__eyebrow {
+  font-size: 11px;
+  color: var(--gold-deep);
+}
+.lineage-page__title {
+  font-size: 48px;
+  margin: 4px 0 6px;
+  color: var(--ink);
+  line-height: 1;
+}
+.lineage-page__lede {
+  font-size: 16px;
+  color: var(--ink-muted);
+  max-width: 760px;
+  margin: 0;
+}
+
+.lineage-page__paper {
+  border: 1px solid var(--gold-deep);
+  padding: 22px;
+  overflow: auto;
+  background: var(--paper);
+}
+
+.lineage-page__pending {
+  color: var(--ink-muted);
+  margin: 0 0 12px;
+}
+
+/* ck3_chronicler-32ks: width attribute on the SVG itself drives the
+   intrinsic size. min-width keeps shallow trees from collapsing into
+   nothing. max-width:none beats any cascading constraint. */
+.lineage-svg { display: block; min-width: 800px; max-width: none; }
+/* vysp.9: Lineage edges. Parentage = solid --rule 1.4px orthogonal stems
+ * (drawn as M ax ay L ax my L bx my L bx by paths client-side).
+ * Marriage = dotted carmine 1.5px. */
+.lineage-svg__edge {
+  stroke: var(--rule);
+  stroke-width: 1.4;
+  fill: none;
+}
+.lineage-svg__marriage {
+  stroke: var(--carmine);
+  stroke-width: 1.5;
+  stroke-dasharray: 1 4;
+  stroke-linecap: round;
+}
+
+.lineage-node { cursor: pointer; }
+.lineage-node:focus { outline: none; }
+.lineage-node__rect {
+  fill: color-mix(in oklab, var(--paper) 92%, white);
+  stroke: var(--rule-soft);
+  stroke-width: 1;
+  transition: stroke 120ms, fill 120ms;
+}
+[data-theme='dark'] .lineage-node__rect {
+  fill: color-mix(in oklab, var(--paper) 70%, white);
+}
+.lineage-node:hover .lineage-node__rect,
+.lineage-node:focus-visible .lineage-node__rect {
+  stroke: var(--gold-deep);
+  fill: color-mix(in oklab, var(--paper) 80%, var(--gold-glow));
+}
+/* Focus = 2px carmine ring + soft shadow stack. Drawn as a layered
+ * rect underneath the main rect via a sibling rect would be cleaner,
+ * but stroke + filter on the node's own rect achieves the same. */
+.lineage-node--focus .lineage-node__rect {
+  stroke: var(--carmine);
+  stroke-width: 2;
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.18));
+}
+.lineage-node--deceased .lineage-node__name { fill: var(--ink-soft); }
+
+.lineage-node__name {
+  fill: var(--ink);
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: var(--ls-display);
+}
+.lineage-node__epithet {
+  fill: var(--carmine-deep);
+  font-family: var(--font-italic);
+  font-style: italic;
+  font-size: 12px;
+}
+.lineage-node__dates {
+  fill: var(--ink-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0;
+}
+.lineage-node__relation {
+  fill: var(--gold-deep);
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.lineage-legend {
+  display: flex;
+  gap: 18px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+.lineage-legend__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.lineage-legend__swatch {
+  width: 22px;
+  height: 0;
+}
+.lineage-legend__label {
+  font-size: 11.5px;
+  color: var(--ink-muted);
+}
+.lineage-page__counts {
+  margin-top: 12px;
+  color: var(--ink-faint);
+  font-size: 13px;
+}
+

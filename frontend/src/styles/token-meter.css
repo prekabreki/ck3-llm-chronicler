@@ -1,0 +1,71 @@
+/* ck3_chronicler-cs1o: TokenMeter — compact appbar strip chip for the
+   monthly narrative-generation spend vs the monthly soft target (the
+   programmatic credit pool). Lives in .appbar__right alongside the
+   in-game date + tail badge, so it borrows the same muted-ink chrome
+   palette as .appbar__date. Bands escalate the accent as the ratio
+   climbs past 75 / 100 / 150% — amber (gold) for warn, carmine for
+   over / severe. All colours route through tokens.css custom props so
+   the chip re-skins with the parchment / vellum themes; var(name,
+   fallback) keeps it legible if tokens haven't loaded yet. */
+
+.token-meter {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--rule, rgba(0, 0, 0, 0.12));
+  background: var(--paper-deep, rgba(0, 0, 0, 0.06));
+  font-family: var(--font-ui, system-ui, sans-serif);
+  font-feature-settings: 'tnum' 1;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.token-meter__label {
+  font-size: var(--fs-chrome-xs, 11px);
+  text-transform: uppercase;
+  font-variant-caps: small-caps;
+  letter-spacing: var(--ls-chrome, 0.04em);
+  color: var(--ink-faint, #8e7a5e);
+  font-weight: 700;
+}
+
+.token-meter__figure {
+  font-size: var(--fs-chrome-sm, 12px);
+  color: var(--ink-muted, #6b5a45);
+}
+
+/* Warn: three-quarters of the pool spent — amber/gold accent. */
+.token-meter--warn {
+  border-color: color-mix(in oklab, var(--gold, #a8801f) 45%, transparent);
+  background: color-mix(in oklab, var(--gold, #a8801f) 8%, transparent);
+}
+.token-meter--warn .token-meter__figure {
+  color: var(--gold-deep, #7c5a14);
+}
+
+/* Over / severe: pool exhausted (or 1.5×) — carmine accent, escalating
+   weight so the over-budget state reads clearly without shouting. */
+.token-meter--over {
+  border-color: color-mix(in oklab, var(--carmine, #9c2e2a) 50%, transparent);
+  background: color-mix(in oklab, var(--carmine, #9c2e2a) 10%, transparent);
+}
+.token-meter--over .token-meter__figure {
+  color: var(--carmine, #9c2e2a);
+  font-weight: 700;
+}
+.token-meter--over .token-meter__label {
+  color: var(--carmine, #9c2e2a);
+}
+
+.token-meter--severe {
+  border-color: var(--carmine, #9c2e2a);
+  background: color-mix(in oklab, var(--carmine, #9c2e2a) 16%, transparent);
+}
+.token-meter--severe .token-meter__figure,
+.token-meter--severe .token-meter__label {
+  color: var(--carmine-deep, #6f1f1c);
+  font-weight: 700;
+}

@@ -1,0 +1,204 @@
+/* CampaignOverviewPage — ck3_chronicler-3tke (2026-05-08).
+ *
+ * Library card → this page (hero block + stats strip + nav panel) →
+ * Codex / Tracked / Lineage / Dynasty / Hall / Closing. The page exists
+ * so a campaign can be browsed AS A CAMPAIGN before drilling into one
+ * of the per-character / per-dynasty surfaces.
+ *
+ * Visual conventions match closing.css's frontispiece:
+ * - Paper hero with edged border, large heraldry on the left, head
+ *   text on the right.
+ * - Mono summary line with smallcaps keys ("Founded · Last seen · Span").
+ * - Stats strip is a horizontal flex row of large numerals with smallcaps
+ *   labels — same shape as Library card counts but larger.
+ * - Nav panel is a 2x3 grid of paper-edged buttons; each carries a label
+ *   in display type and a one-line italic description. */
+
+.overview-page {
+  display: flex;
+  justify-content: center;
+  padding: 48px 24px;
+}
+
+.overview-page__inner {
+  width: 100%;
+  max-width: 920px;
+  display: flex;
+  flex-direction: column;
+  gap: 36px;
+}
+
+.overview-page--empty {
+  padding: 96px 24px;
+  text-align: center;
+}
+
+.overview-page__status {
+  text-align: center;
+  color: var(--ink-muted);
+  margin-top: 96px;
+}
+
+/* --- Hero --- */
+
+.overview-hero {
+  display: grid;
+  grid-template-columns: minmax(180px, auto) 1fr;
+  gap: 32px;
+  padding: 32px 36px;
+  align-items: center;
+}
+
+.overview-hero__shield {
+  display: flex;
+  justify-content: center;
+}
+
+.overview-hero__head {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.overview-hero__eyebrow {
+  color: var(--ink-muted);
+  letter-spacing: var(--ls-chrome);
+}
+
+.overview-hero__title {
+  font-family: var(--font-display);
+  font-size: 44px;
+  line-height: 1.05;
+  margin: 0;
+  letter-spacing: var(--ls-display);
+  color: var(--ink);
+  word-break: break-word;
+}
+
+.overview-hero__ruler {
+  font-size: var(--fs-md);
+  color: var(--ink-soft);
+}
+
+.overview-hero__summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: baseline;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+  margin-top: 6px;
+}
+
+.overview-hero__summary-key {
+  font-family: var(--font-ui);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-chrome);
+  font-size: var(--fs-chrome-sm);
+  font-weight: 600;
+  color: var(--ink-muted);
+  margin-right: 4px;
+}
+
+.overview-hero__summary-sep {
+  color: var(--ink-muted);
+  opacity: 0.6;
+}
+
+/* --- Stats strip --- */
+
+.overview-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 18px;
+  padding: 16px 24px;
+  border-top: 1px solid var(--rule-soft);
+  border-bottom: 1px solid var(--rule-soft);
+}
+
+.overview-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.overview-stat__n {
+  font-family: var(--font-display);
+  font-size: 30px;
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1;
+}
+
+.overview-stat__l {
+  color: var(--ink-muted);
+  letter-spacing: var(--ls-chrome);
+  font-size: var(--fs-chrome-sm);
+}
+
+/* --- Nav panel --- */
+
+.overview-nav {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+
+.overview-nav__slot {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 18px 20px;
+  background: var(--paper);
+  border: 1px solid var(--rule-soft);
+  border-radius: 2px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 100ms ease, border-color 100ms ease;
+  font: inherit;
+  color: inherit;
+}
+
+.overview-nav__slot:hover,
+.overview-nav__slot:focus-visible {
+  background: color-mix(in oklab, var(--paper) 80%, var(--gold-glow));
+  border-color: var(--gold-deep);
+  outline: none;
+}
+
+.overview-nav__slot-label {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: var(--fs-lg);
+  color: var(--ink);
+  letter-spacing: var(--ls-display);
+}
+
+.overview-nav__slot-desc {
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+  line-height: 1.35;
+}
+
+@media (max-width: 720px) {
+  .overview-hero {
+    grid-template-columns: 1fr;
+    text-align: center;
+  }
+  .overview-hero__head {
+    align-items: center;
+  }
+  .overview-hero__summary {
+    justify-content: center;
+  }
+  .overview-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .overview-nav {
+    grid-template-columns: 1fr;
+  }
+}

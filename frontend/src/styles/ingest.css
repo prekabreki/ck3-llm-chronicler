@@ -1,0 +1,106 @@
+/* ingest.css — split from globals.css by audit F-16 / ck3_chronicler-npf1. Edit per-page styles here; primitives (paper, btn, tabs, …) stay in globals.css. */
+
+/* ---------- Phase 4: Ingest / Save-tail page ---------- */
+
+.ingest-page {
+  background: var(--paper-deep);
+  min-height: calc(100vh - 67px);
+  padding: 40px 28px 80px;
+}
+.ingest-page--empty {
+  display: grid;
+  place-items: center;
+  text-align: center;
+  color: var(--ink-muted);
+}
+.ingest-page__inner {
+  max-width: 1100px;
+  margin: 0 auto;
+}
+.ingest-page__header { margin-bottom: 22px; }
+.ingest-page__eyebrow {
+  font-size: 11px;
+  color: var(--gold-deep);
+}
+.ingest-page__title {
+  font-size: 44px;
+  margin: 4px 0 6px;
+  color: var(--ink);
+  line-height: 1;
+}
+.ingest-page__lede {
+  font-size: 16px;
+  color: var(--ink-muted);
+  max-width: 760px;
+  margin: 0;
+}
+.ingest-page__toolbar {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 18px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.ingest-status--connected { color: var(--ink); }
+.ingest-status--idle { color: var(--ink-muted); }
+.ingest-status__latest {
+  color: var(--gold-deep);
+  font-style: italic;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.ingest-list {
+  border: 1px solid var(--gold-deep);
+  padding: 14px 18px;
+  min-height: 240px;
+}
+.ingest-list__empty {
+  color: var(--ink-muted);
+  margin: 24px 0;
+  font-size: 15px;
+  text-align: center;
+}
+.ingest-list__rows {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.ingest-row {
+  display: grid;
+  grid-template-columns: 60px 24px 200px 1fr auto;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px dotted var(--rule-soft);
+  align-items: baseline;
+}
+.ingest-row--meta {
+  background: rgba(168, 128, 31, 0.04);
+  grid-template-columns: 60px 24px 1fr;
+}
+.ingest-row:last-child { border-bottom: none; }
+.ingest-row__index {
+  font-size: 11px;
+  color: var(--ink-faint);
+}
+.ingest-row__bead {
+  color: var(--gold-deep);
+  font-family: 'Cormorant Unicase', serif;
+}
+.ingest-row__type {
+  color: var(--ink);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  word-break: break-word;
+}
+.ingest-row__date {
+  color: var(--ink-muted);
+  font-size: 13.5px;
+}
+.ingest-row__refs {
+  font-size: 11px;
+  color: var(--ink-faint);
+}
+

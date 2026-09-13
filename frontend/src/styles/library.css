@@ -1,0 +1,511 @@
+/* library.css — split from globals.css by audit F-16 / ck3_chronicler-npf1. Edit per-page styles here; primitives (paper, btn, tabs, …) stay in globals.css. */
+
+/* ---------- Phase 2: Library page ---------- */
+
+.library-page {
+  background: var(--paper-deep);
+  min-height: calc(100vh - 67px);
+  padding: 40px 28px 80px;
+}
+.library-page__inner {
+  max-width: 1320px;
+  margin: 0 auto;
+}
+.library-page__header { margin-bottom: 28px; }
+.library-page__eyebrow {
+  font-size: 11px;
+  color: var(--gold-deep);
+}
+.library-page__title {
+  font-size: 52px;
+  margin: 4px 0 6px;
+  color: var(--ink);
+  line-height: 1;
+}
+.library-page__lede {
+  font-size: 17px;
+  color: var(--ink-muted);
+  max-width: 720px;
+  margin: 0;
+}
+.library-page__fleuron { margin: 20px 0 28px; }
+.library-page__status {
+  color: var(--ink-muted);
+  margin: 24px 0;
+}
+.library-page__status--error { color: var(--carmine-deep); }
+.library-page__empty {
+  color: var(--ink-muted);
+  margin: 24px 0;
+  grid-column: 1 / -1;
+}
+.library-page__completed { margin-top: 44px; }
+
+/* ck3_chronicler-v2a: + Adopt save button */
+.library-page__actions {
+  display: flex;
+  justify-content: flex-end;
+  margin: 16px 0 8px;
+}
+.library-page__adopt {
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--rule);
+  font-family: 'Cormorant SC', 'IM Fell English SC', serif;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  padding: 8px 14px;
+  cursor: pointer;
+  transition: background 120ms;
+}
+.library-page__adopt:hover {
+  background: color-mix(in srgb, var(--paper) 80%, var(--gold-deep) 20%);
+}
+
+/* vysp.6: Library 3-col card grid + toolbar + section headers with
+ * flex-1 hairline rule. Cards are .lib-card with hover-revealed menu. */
+.lib-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 22px;
+  padding: 8px 0 12px;
+  margin-top: 16px;
+}
+@media (max-width: 1080px) {
+  .lib-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 720px) {
+  .lib-grid { grid-template-columns: 1fr; }
+}
+.library-grid { /* legacy alias kept for any tests still referencing it */
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: 22px;
+  margin-top: 16px;
+}
+
+.library-section-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 22px 0 12px;
+}
+.library-section-header__title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--fs-2xl);
+  color: var(--ink);
+  margin: 0;
+  letter-spacing: var(--ls-display);
+}
+.library-section-header__count {
+  font-family: var(--font-ui);
+  font-weight: 700;
+  font-size: var(--fs-chrome-sm);
+  letter-spacing: var(--ls-chrome);
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+.library-section-header__rule {
+  flex: 1;
+  height: 1px;
+  background: var(--rule-soft);
+}
+
+.library-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.library-toolbar__primary { font-weight: 700; }
+.library-toolbar__quiet:disabled { opacity: 0.5; cursor: not-allowed; }
+.library-toolbar__kbd {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  border: 1px solid var(--rule-soft);
+  background: var(--paper);
+  border-radius: 2px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-chrome-xs);
+  color: var(--ink-muted);
+  letter-spacing: 0;
+}
+
+.lib-card {
+  display: grid;
+  grid-template-rows: auto auto auto 1fr auto;
+  gap: 14px;
+  padding: 22px 22px 18px;
+  border: 1px solid var(--rule);
+  background: color-mix(in oklab, var(--paper) 88%, white);
+  position: relative;
+  transition: transform 120ms ease, box-shadow 120ms ease;
+  cursor: pointer;
+  text-align: left;
+}
+[data-theme='dark'] .lib-card {
+  background: color-mix(in oklab, var(--paper) 70%, white);
+}
+.lib-card:hover, .lib-card:focus-within {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 22px rgba(74, 54, 22, 0.12);
+}
+/* ck3_chronicler-vgcp: the Open affordance is now a transparent <button>
+   stretched across the card body so the WAI-ARIA "no nested interactives"
+   rule isn't violated by the menu buttons living inside a role=button
+   article. Sits beneath .lib-card__menu (z-index) so the action buttons
+   remain clickable. .lib-card relies on position: relative defined above. */
+.lib-card__open {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  appearance: none;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+.lib-card__open:focus-visible {
+  outline: 2px solid var(--accent, var(--gold-deep));
+  outline-offset: -3px;
+}
+.lib-card__head {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+}
+.lib-card__shield {
+  display: flex;
+  filter:
+    drop-shadow(0 1px 0 rgba(0, 0, 0, 0.30))
+    drop-shadow(0 4px 6px rgba(0, 0, 0, 0.22))
+    drop-shadow(0 10px 14px rgba(0, 0, 0, 0.16));
+}
+[data-theme='dark'] .lib-card__shield {
+  filter:
+    drop-shadow(0 1px 0 rgba(0, 0, 0, 0.50))
+    drop-shadow(0 4px 6px rgba(0, 0, 0, 0.40))
+    drop-shadow(0 10px 14px rgba(0, 0, 0, 0.30));
+}
+.lib-card__head-text { min-width: 0; }
+.lib-card__name {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 26px;
+  color: var(--ink);
+  line-height: 1.04;
+  letter-spacing: var(--ls-display);
+  margin: 0;
+}
+.lib-card__name-input {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 26px;
+  color: var(--ink);
+  background: transparent;
+  border: 1px solid var(--rule-soft);
+  padding: 2px 6px;
+  width: 100%;
+  outline: none;
+}
+.lib-card__name-input:focus { border-color: var(--gold-deep); }
+.lib-card__byline {
+  margin-top: 4px;
+  font-family: var(--font-italic);
+  font-style: italic;
+  font-size: var(--fs-sm);
+  color: var(--ink-muted);
+  line-height: 1.3;
+}
+.lib-card__rename-warning {
+  font-size: var(--fs-xs);
+  color: var(--carmine-deep);
+  margin-top: 4px;
+}
+.lib-card__span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+  padding: 3px 8px;
+  border: 1px solid var(--rule-soft);
+  border-radius: 2px;
+  background: color-mix(in oklab, var(--paper) 90%, white);
+  width: fit-content;
+}
+[data-theme='dark'] .lib-card__span {
+  background: color-mix(in oklab, var(--paper) 90%, black);
+}
+.lib-card__blurb {
+  font-family: var(--font-italic);
+  font-style: italic;
+  font-size: var(--fs-md);
+  line-height: 1.5;
+  color: var(--ink-soft);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin: 0;
+}
+.lib-card__counts {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--rule-soft);
+}
+.lib-card__count {
+  text-align: center;
+  border-right: 1px solid var(--rule-soft);
+  padding: 0 4px;
+}
+.lib-card__count:last-child { border-right: 0; }
+.lib-card__count-n {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--fs-xl);
+  color: var(--ink);
+  line-height: 1;
+}
+.lib-card__count-l {
+  display: block;
+  margin-top: 4px;
+  font-family: var(--font-ui);
+  font-weight: 700;
+  font-size: var(--fs-chrome-xs);
+  letter-spacing: var(--ls-chrome);
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+.lib-card__chip {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  font-family: var(--font-ui);
+  font-weight: 700;
+  font-size: var(--fs-chrome-xs);
+  letter-spacing: var(--ls-chrome);
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--vert) 25%, transparent);
+  color: var(--vert);
+}
+.lib-card__chip--archived {
+  background: color-mix(in oklab, var(--purpure) 25%, transparent);
+  color: var(--purpure);
+}
+.lib-card__pill {
+  display: inline-block;
+  font-family: var(--font-ui);
+  font-weight: 700;
+  font-size: var(--fs-chrome-xs);
+  letter-spacing: var(--ls-chrome);
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 2px;
+  background: color-mix(in oklab, var(--carmine) 22%, transparent);
+  color: var(--carmine);
+  width: fit-content;
+}
+.lib-card__pill--migrate { color: var(--carmine); }
+/* ck3_chronicler: the hover-revealed action menu (Rename / Export /
+   Delete) sits as an opaque OVERLAY across the bottom-edge of the card,
+   covering the counts row beneath rather than rendering on top of its
+   text. Without the explicit background the count numbers showed
+   through the menu and made it read as a 'soup of overlapping buttons'
+   on hover. Light dark-mode overrides below match the card surface. */
+.lib-card__menu {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  /* ck3_chronicler-vgcp: must sit above the .lib-card__open overlay so the
+     menu's Rename/Reimport/Export/Delete buttons stay clickable. */
+  z-index: 2;
+  padding: 12px 18px;
+  opacity: 0;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
+  background: color-mix(in oklab, var(--paper) 96%, white);
+  border-top: 1px solid var(--rule-soft);
+  transition: opacity 120ms ease;
+  pointer-events: none;
+}
+[data-theme='dark'] .lib-card__menu {
+  background: color-mix(in oklab, var(--paper) 78%, white);
+}
+.lib-card:hover .lib-card__menu,
+.lib-card:focus-within .lib-card__menu {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.adopt-card {
+  display: grid;
+  place-items: center;
+  gap: 12px;
+  padding: 36px 22px;
+  border: 1.5px dashed var(--gold-deep);
+  background: transparent;
+  cursor: pointer;
+  transition: background 120ms ease, transform 120ms ease;
+}
+.adopt-card:hover {
+  background: color-mix(in oklab, var(--gold-glow) 10%, transparent);
+  transform: translateY(-2px);
+}
+.adopt-card__glyph {
+  font-family: var(--font-display);
+  font-size: 36px;
+  color: var(--gold-deep);
+  line-height: 1;
+}
+.adopt-card__title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--fs-xl);
+  color: var(--ink);
+}
+.adopt-card__sub {
+  font-size: var(--fs-sm);
+  color: var(--ink-muted);
+  text-align: center;
+  max-width: 240px;
+}
+
+/* btn--sm — used by .lib-card__menu actions */
+.btn--sm { padding: 4px 8px; font-size: var(--fs-chrome-xs); }
+
+/* ck3_chronicler-ezpc: destructive delete button on the Library card.
+ * Stays quiet by default (so it doesn't pull attention from Open) but
+ * tints carmine on hover/focus so the user reads the affordance as
+ * irreversible before the confirm modal opens. */
+.lib-card__delete:hover,
+.lib-card__delete:focus-visible {
+  color: var(--carmine-deep);
+  border-color: var(--carmine-deep);
+}
+
+/* ---------- Phase 2: Campaign card ---------- */
+
+.campaign-card {
+  border: 1px solid var(--gold-deep);
+  padding: 22px;
+  cursor: pointer;
+  position: relative;
+  box-shadow: 0 8px 24px rgba(40, 24, 8, 0.18);
+  transition: transform 120ms ease;
+}
+.campaign-card:hover, .campaign-card:focus-visible {
+  transform: translateY(-2px);
+  outline: 2px solid var(--gold-bright);
+  outline-offset: 2px;
+}
+.campaign-card__row {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+.campaign-card__arms {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.campaign-card__arms-label {
+  font-size: 11px;
+  color: var(--gold-deep);
+}
+.campaign-card__head {
+  flex: 1;
+  min-width: 0;
+}
+.campaign-card__realm {
+  font-size: 11px;
+  color: var(--gold-deep);
+}
+.campaign-card__name {
+  font-size: 26px;
+  margin: 2px 0 4px;
+  color: var(--ink);
+  line-height: 1.05;
+}
+/* ck3_chronicler-bly: inline rename input — same metrics as the title so
+   the swap doesn't reflow the card. */
+.campaign-card__name-input {
+  font-size: 26px;
+  margin: 2px 0 4px;
+  color: var(--ink);
+  line-height: 1.05;
+  width: 100%;
+  background: var(--paper-edge);
+  border: 1px solid var(--rule);
+  padding: 2px 6px;
+  font-family: inherit;
+}
+.campaign-card__name-input:focus {
+  outline: none;
+  border-color: var(--gold-deep);
+}
+.campaign-card__rename-warning {
+  font-size: 12px;
+  color: var(--carmine-deep);
+  margin: 2px 0 4px;
+}
+.campaign-card__bookmark {
+  font-size: 14px;
+  color: var(--ink-muted);
+}
+.campaign-card__sealed {
+  font-family: 'Cormorant SC', 'IM Fell English SC', serif;
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--carmine-deep);
+  border: 1px solid var(--carmine-deep);
+  padding: 2px 8px;
+  align-self: flex-start;
+}
+.campaign-card__rule {
+  background: var(--rule-soft);
+  margin-top: 14px;
+}
+.campaign-card__pairs {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px 16px;
+  margin: 12px 0 0;
+  font-size: 13.5px;
+}
+.campaign-card__blurb {
+  margin: 14px 0 4px;
+  color: var(--ink);
+  font-size: 14.5px;
+  line-height: 1.55;
+  border-left: 2px solid var(--gold-deep);
+  padding-left: 12px;
+}
+.campaign-card__pair-key {
+  font-size: 11px;
+  color: var(--ink-muted);
+}
+.campaign-card__pair-value {
+  color: var(--ink);
+  font-family: 'EB Garamond', serif;
+  font-size: 14.5px;
+  word-break: break-word;
+}
+

@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Chronicler — starting…</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <style>
+    /* ck3_chronicler: parchment-flavoured splash served while the
+       headless launcher waits for uvicorn to bind :8000. Bare-bones,
+       no external assets so first paint is instant.
+
+       The splash is its own page (file:///), so cross-origin rules
+       prevent us from inspecting the localhost response. We use
+       fetch(..., {mode: 'no-cors'}) which resolves on any server
+       response and throws on ECONNREFUSED — perfect for an up-check. */
+    :root {
+      --paper: #f3e8c8;
+      --ink: #2a1f12;
+      --rule: #b8a47a;
+      --gold: #8a6f2c;
+    }
+    html, body { height: 100%; margin: 0; }
+    body {
+      background: var(--paper);
+      color: var(--ink);
+      font-family: 'EB Garamond', 'Garamond', 'Georgia', serif;
+      display: flex; align-items: center; justify-content: center;
+      flex-direction: column;
+      text-align: center;
+      padding: 2rem;
+      box-sizing: border-box;
+    }
+    .glyph {
+      width: 64px; height: 64px;
+      margin-bottom: 1.5rem;
+      border: 2px solid var(--rule);
+      border-top-color: var(--gold);
+      border-radius: 50%;
+      animation: spin 1.6s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    h1 {
+      font-style: italic;
+      font-weight: 400;
+      font-size: 1.6rem;
+      margin: 0 0 0.5rem 0;
+      letter-spacing: 0.02em;
+    }
+    p {
+      font-size: 1rem;
+      margin: 0.25rem 0;
+      color: var(--ink);
+      opacity: 0.7;
+      font-style: italic;
+    }
+    .hint {
+      margin-top: 1.5rem;
+      font-size: 0.9rem;
+      opacity: 0;
+      transition: opacity 600ms ease;
+      max-width: 32rem;
+    }
+    .hint.show { opacity: 0.85; }
+    .err {
+      margin-top: 1.5rem;
+      color: #6c2a1f;
+      font-size: 0.9rem;
+      display: none;
+    }
+    .err.show { display: block; }
+  </style>
+</head>
+<body>
+  <div class="glyph" aria-hidden="true"></div>
+  <h1>The chronicler stirs…</h1>
+  <p id="status">parsing the latest save to find your campaign</p>
+  <p class="hint" id="hint">
+    First start after a CK3 session can take 20–60 seconds while the
+    chronicler reads your autosave. Subsequent starts are faster — the
+    persisted baseline lets us pick up where we left off.
+  </p>
+  <p class="err" id="err">
+    Still waiting after two minutes. If chronicler genuinely failed to
+    start, kill <code>python.exe</code> in Task Manager and try the
+    shortcut again. Otherwise leave this open — a very large autosave
+    (40k+ characters) can legitimately take this long.
+  </p>
+  <script>
+    (() => {
+      const TARGET = 'http://localhost:8000/';
+      const POLL_MS = 500;
+      const HINT_AFTER_MS = 8000;       // show the hint copy after 8s
+      const ERR_AFTER_MS = 120000;      // show the "still waiting" copy after 2 min
+      const startedAt = Date.now();
+      let hintShown = false;
+      let errShown = false;
+
+      function tick() {
+        const elapsed = Date.now() - startedAt;
+        if (!hintShown && elapsed > HINT_AFTER_MS) {
+          document.getElementById('hint').classList.add('show');
+          hintShown = true;
+        }
+        if (!errShown && elapsed > ERR_AFTER_MS) {
+          document.getElementById('err').classList.add('show');
+          errShown = true;
+        }
+      }
+      setInterval(tick, 1000);
+
+      async function poll() {
+        // no-cors fetch: opaque response on success, TypeError on
+        // ECONNREFUSED. Either branch decides whether the backend has
+        // bound :8000 yet.
+        try {
+          await fetch(TARGET, { mode: 'no-cors', cache: 'no-store' });
+          // Got a response (any status) — server is up. Navigate.
+          window.location.replace(TARGET);
+        } catch {
+          // Still down; retry after POLL_MS.
+          setTimeout(poll, POLL_MS);
+        }
+      }
+
+      // Kick off immediately.
+      poll();
+    })();
+  </script>
+</body>
+</html>

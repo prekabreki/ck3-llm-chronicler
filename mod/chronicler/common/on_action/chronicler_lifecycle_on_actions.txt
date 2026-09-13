@@ -1,0 +1,88 @@
+﻿# Lifecycle hooks: birth, death, marriage, divorce, imprison/release.
+#
+# CRITICAL — mod-compat rule (research §1.2): on_actions = {} APPENDS
+# across mods, but trigger = {} and effect = {} OVERWRITE the vanilla
+# definitions. We always nest our handler inside on_actions = {} and
+# put the body in a scripted_effect (which also hot-reloads, unlike
+# the on_action itself).
+
+on_death = {
+	on_actions = {
+		chronicler_on_death
+	}
+}
+
+chronicler_on_death = {
+	effect = {
+		chronicler_emit_death = yes
+	}
+}
+
+# v0.2 — birth: on_birth_child fires once per birth with ROOT = newborn.
+# We hook only on_birth_child (not on_birth_mother / on_birth_father)
+# because the engine fires all three back-to-back; mother and father
+# come out of the scope dump as named scopes.
+on_birth_child = {
+	on_actions = {
+		chronicler_on_birth
+	}
+}
+
+chronicler_on_birth = {
+	effect = {
+		chronicler_emit_birth = yes
+	}
+}
+
+# v0.2 — marriage / divorce. Spouses appear as named scopes in the
+# engine dump (verify scope names against a captured fixture before
+# adding any inline payload fields).
+on_marriage = {
+	on_actions = {
+		chronicler_on_marriage
+	}
+}
+
+chronicler_on_marriage = {
+	effect = {
+		chronicler_emit_marriage = yes
+	}
+}
+
+on_divorce = {
+	on_actions = {
+		chronicler_on_divorce
+	}
+}
+
+chronicler_on_divorce = {
+	effect = {
+		chronicler_emit_divorce = yes
+	}
+}
+
+# v0.2 — imprison / release. ROOT is the prisoner; captor / jailer
+# expected as a named scope in the dump.
+on_imprison = {
+	on_actions = {
+		chronicler_on_imprison
+	}
+}
+
+chronicler_on_imprison = {
+	effect = {
+		chronicler_emit_imprison = yes
+	}
+}
+
+on_release_from_prison = {
+	on_actions = {
+		chronicler_on_release
+	}
+}
+
+chronicler_on_release = {
+	effect = {
+		chronicler_emit_release = yes
+	}
+}

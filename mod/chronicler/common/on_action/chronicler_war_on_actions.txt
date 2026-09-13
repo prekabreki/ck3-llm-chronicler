@@ -1,0 +1,41 @@
+﻿# War hooks: started, won_attacker, won_defender.
+#
+# on_war_started fires on the casus_belli activation. Attacker/defender
+# leaders + casus_belli appear as named scopes in the engine dump.
+# The won_attacker / won_defender variants fire on resolution.
+
+on_war_started = {
+	on_actions = {
+		chronicler_on_war_started
+	}
+}
+
+chronicler_on_war_started = {
+	effect = {
+		chronicler_emit_war_started = yes
+	}
+}
+
+on_war_won_attacker = {
+	on_actions = {
+		chronicler_on_war_won_attacker
+	}
+}
+
+chronicler_on_war_won_attacker = {
+	effect = {
+		chronicler_emit_war_won_attacker = yes
+	}
+}
+
+on_war_won_defender = {
+	on_actions = {
+		chronicler_on_war_won_defender
+	}
+}
+
+chronicler_on_war_won_defender = {
+	effect = {
+		chronicler_emit_war_won_defender = yes
+	}
+}

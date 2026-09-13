@@ -1,0 +1,57 @@
+/* ck3_chronicler-bges: thin save-tail activity strip below the AppShell.
+   Mirrors the .narrative-strip chrome palette (paper-deep bg, rule border,
+   ink-muted text) so both strips read as the same visual tier.
+   Falls through with sensible defaults via var(name, fallback) so the
+   strip is readable even before tokens.css loads. */
+
+.ingest-activity-strip {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  width: 100%;
+  padding: 4px 18px;
+  background: var(--paper-deep, rgba(0, 0, 0, 0.06));
+  border-bottom: 1px solid var(--rule, rgba(0, 0, 0, 0.12));
+  font-family: var(--font-ui, system-ui, sans-serif);
+  font-size: var(--fs-chrome-sm, 12px);
+  line-height: 20px;
+  color: var(--ink-muted, #6b5a45);
+  font-feature-settings: 'tnum' 1;
+}
+
+.ingest-activity-strip__label {
+  font-size: var(--fs-chrome-xs, 11px);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-chrome, 0.04em);
+  color: var(--ink-faint, #8e7a5e);
+  font-weight: 700;
+  margin-right: 4px;
+}
+
+.ingest-activity-strip__filename {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  color: var(--ink, #1a1410);
+}
+
+.ingest-activity-strip__date {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  color: var(--ink, #1a1410);
+  font-variant-numeric: tabular-nums;
+}
+
+.ingest-activity-strip__ago {
+  color: var(--ink-muted, #6b5a45);
+}
+
+.ingest-activity-strip__events {
+  color: var(--ink, #1a1410);
+}
+
+/* ck3_chronicler-cjtx: live ingest backlog. Amber so a real backlog reads
+   as "still catching up" — same tier as the amber "Catching up" tail
+   badge. Only rendered when pending > 0. */
+.ingest-activity-strip__pending {
+  color: var(--warn, #8a5a00);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}

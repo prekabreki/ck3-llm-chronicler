@@ -1,0 +1,3 @@
+# Git hooks are POSIX shell scripts executed by Git's bash; force LF so the
+# shebang and script body are valid even on Windows checkouts.
+* text eol=lf

@@ -1,0 +1,184 @@
+/* closing.css — split from globals.css by audit F-16 / ck3_chronicler-npf1. Edit per-page styles here; primitives (paper, btn, tabs, …) stay in globals.css. */
+
+/* ---------- Phase 5: Closing page ---------- */
+
+.closing-page {
+  background: var(--paper-deep);
+  min-height: calc(100vh - 67px);
+  padding: 40px 28px 100px;
+}
+.closing-page--empty {
+  display: grid;
+  place-items: center;
+  text-align: center;
+  color: var(--ink-muted);
+}
+.closing-page__inner {
+  max-width: 1080px;
+  margin: 0 auto;
+}
+.closing-page__status {
+  color: var(--ink-muted);
+  margin: 24px 0;
+  text-align: center;
+}
+
+/* vysp.12: Closing-ceremony hero — 200px shield with the heaviest
+ * drop-shadow stack + ringed; double-rule above and below the stack of
+ * eyebrow/name/summary; mono Founded · Closed · Span line. */
+.closing-frontispiece {
+  padding: 56px 80px 56px;
+  text-align: center;
+  border: 1px solid var(--gold-deep);
+  margin-bottom: 28px;
+  position: relative;
+  background:
+    radial-gradient(ellipse at 50% 32%,
+      color-mix(in oklab, var(--gold-glow) 18%, transparent) 0%,
+      transparent 60%),
+    var(--paper);
+}
+.closing-frontispiece__inner { position: relative; z-index: 1; }
+.closing-frontispiece__shield {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 28px;
+  filter:
+    drop-shadow(0 1px 0 rgba(0, 0, 0, 0.30))
+    drop-shadow(0 14px 18px rgba(0, 0, 0, 0.22))
+    drop-shadow(0 36px 44px rgba(0, 0, 0, 0.18));
+}
+[data-theme='dark'] .closing-frontispiece__shield {
+  filter:
+    drop-shadow(0 1px 0 rgba(0, 0, 0, 0.55))
+    drop-shadow(0 14px 18px rgba(0, 0, 0, 0.45))
+    drop-shadow(0 36px 44px rgba(0, 0, 0, 0.32));
+}
+.closing-frontispiece__rule-double {
+  margin: 18px auto;
+  width: min(540px, 80%);
+  height: 4px;
+  border-top: 1px solid var(--gold-deep);
+  border-bottom: 1px solid var(--gold-deep);
+}
+.closing-frontispiece__eyebrow {
+  font-family: var(--font-ui);
+  font-weight: 700;
+  font-size: var(--fs-chrome-sm);
+  letter-spacing: var(--ls-chrome);
+  text-transform: uppercase;
+  color: var(--gold-deep);
+  margin-bottom: 12px;
+}
+.closing-frontispiece__title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--fs-5xl);
+  line-height: 0.95;
+  margin: 0 0 16px;
+  color: var(--ink);
+  letter-spacing: var(--ls-display);
+}
+.closing-frontispiece__summary {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+  font-feature-settings: 'lnum';
+}
+.closing-frontispiece__summary-key {
+  font-family: var(--font-ui);
+  font-weight: 700;
+  font-size: var(--fs-chrome-xs);
+  letter-spacing: var(--ls-chrome);
+  text-transform: uppercase;
+  color: var(--ink-muted);
+  margin-right: 2px;
+}
+.closing-frontispiece__summary-sep {
+  color: var(--ink-faint);
+}
+
+.closing-prose {
+  padding: 38px;
+  border: 1px solid var(--gold-deep);
+  margin-bottom: 22px;
+}
+.closing-prose__eyebrow {
+  font-size: 11px;
+  color: var(--gold-deep);
+  margin-bottom: 18px;
+}
+.closing-prose__para {
+  font-family: 'EB Garamond', serif;
+  font-size: 17px;
+  line-height: 1.7;
+  color: var(--ink);
+  text-indent: 1.4em;
+  margin: 0 0 14px;
+}
+.closing-prose__attribution {
+  font-size: 11px;
+  color: var(--ink-muted);
+  margin-top: 22px;
+  padding-top: 16px;
+  border-top: 1px dotted var(--rule);
+}
+
+/* vysp.12: Action card on carmine-tinted paper, "Affix wax seal" button
+ * carries destructive emphasis (carmine fill, not gold). */
+.closing-cta {
+  padding: 36px 44px;
+  border: 1px solid var(--carmine-deep);
+  border-top-width: 1px;
+  border-bottom: 4px solid var(--carmine-deep);
+  background: color-mix(in oklab, var(--paper) 88%, var(--carmine));
+  text-align: center;
+}
+.closing-cta__eyebrow {
+  font-family: var(--font-ui);
+  font-weight: 700;
+  font-size: var(--fs-chrome-sm);
+  letter-spacing: var(--ls-chrome);
+  text-transform: uppercase;
+  color: var(--carmine-deep);
+  margin-bottom: 14px;
+}
+.closing-cta__lede {
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: var(--fs-md);
+  line-height: 1.6;
+  max-width: 600px;
+  margin: 0 auto 22px;
+}
+.closing-cta__button { margin-top: 8px; }
+.closing-cta__confirm {
+  border-top: 1px dotted var(--rule);
+  padding-top: 18px;
+  margin-top: 18px;
+}
+.closing-cta__confirm-buttons {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-top: 12px;
+}
+.closing-cta__seal {
+  background: var(--carmine);
+  color: var(--argent);
+  border-color: var(--carmine-deep);
+  font-weight: 700;
+}
+.closing-cta__seal:hover:not(:disabled) {
+  background: var(--carmine-deep);
+}
+.closing-cta__error {
+  color: var(--carmine-deep);
+  margin-top: 14px;
+}
+

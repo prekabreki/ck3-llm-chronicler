@@ -1,0 +1,74 @@
+/* ck3_chronicler-n52f: auto-resume banner. Mirrors .recovery-banner
+   chrome (paper-warm background, low-key chrome typography) so the
+   user reads both as the same visual tier. The two action buttons
+   sit flush-right via the spacer; same baseline as the strip text. */
+
+.auto-resume-banner {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 4px 18px;
+  background: var(--paper-warm, rgba(180, 145, 80, 0.14));
+  border-bottom: 1px solid var(--rule, rgba(0, 0, 0, 0.12));
+  font-family: var(--font-ui, system-ui, sans-serif);
+  font-size: var(--fs-chrome-sm, 12px);
+  line-height: 20px;
+  color: var(--ink, #2a1f12);
+}
+
+.auto-resume-banner__label {
+  font-size: var(--fs-chrome-xs, 11px);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-chrome, 0.04em);
+  font-weight: 700;
+  color: var(--ink-faint, #8e7a5e);
+}
+
+.auto-resume-banner__sep {
+  color: var(--ink-faint, #8e7a5e);
+}
+
+.auto-resume-banner__campaign {
+  font-weight: 600;
+  color: var(--ink, #2a1f12);
+}
+
+.auto-resume-banner__detail {
+  font-style: italic;
+  color: var(--ink-muted, #6b5a45);
+}
+
+.auto-resume-banner__spacer {
+  flex: 1 1 auto;
+}
+
+.auto-resume-banner__switch {
+  background: transparent;
+  border: 1px solid var(--rule, rgba(0, 0, 0, 0.4));
+  padding: 2px 10px;
+  font: inherit;
+  font-weight: 600;
+  color: var(--ink, #2a1f12);
+  cursor: pointer;
+  border-radius: 2px;
+}
+
+.auto-resume-banner__switch:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.auto-resume-banner__dismiss {
+  background: transparent;
+  border: none;
+  padding: 0 6px;
+  font: inherit;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--ink-faint, #8e7a5e);
+  cursor: pointer;
+}
+
+.auto-resume-banner__dismiss:hover {
+  color: var(--ink, #2a1f12);
+}

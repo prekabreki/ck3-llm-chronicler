@@ -1,0 +1,27 @@
+[20:54:27][D][console.cpp:1164]: Running console command: kill 32134
+[20:54:27][D][console.cpp:1193]: console_success: RIP
+[20:54:27][D][jomini_effect_impl.cpp:450]: file: common/scripted_effects/chronicler_emit_effects.txt line: 29 (chronicler_emit_death): CHRONICLER|v=1|t=death|d=16th of September, 1066 AD
+[20:54:27][D][effectimpl.cpp:642]: William de Normandie of d_normandy (Internal ID: 32134 - Historical ID 140) weak (Character - 32134)!
+Root: William de Normandie of d_normandy (Internal ID: 32134 - Historical ID 140) weak (Character - 32134)!
+
+Saved event targets:
+new_memory: spouse died weak (Character_memory - 2274)!
+surviving_consort: Mathilde van Vlaanderen of  (Internal ID: 33007 - Historical ID 367) weak (Character - 33007)!
+dead_character: William de Normandie of d_normandy (Internal ID: 32134 - Historical ID 140) weak (Character - 32134)!
+liege_of_dead_character_councillor: Philippe Capet of k_france (Internal ID: 37409 - Historical ID 214) weak (Character - 37409)!
+deceased_character_stress: 20.00
+old_house_head: William de Normandie of d_normandy (Internal ID: 32134 - Historical ID 140) weak (Character - 32134)!
+
+Saved list targets:
+send_death_management_0002:
+Mathilde van Vlaanderen of  (Internal ID: 33007 - Historical ID 367) weak (Character - 33007)!
+Agathe de Normandie of  (Internal ID: 39543 - Historical ID 141) weak (Character - 39543)!
+Richard de Normandie of  (Internal ID: 37916 - Historical ID 144) weak (Character - 37916)!
+William de Normandie of  (Internal ID: 38092 - Historical ID 146) weak (Character - 38092)!
+Cecilia de Normandie of  (Internal ID: 38232 - Historical ID 147) weak (Character - 38232)!
+Constance de Normandie of  (Internal ID: 39045 - Historical ID 143) weak (Character - 39045)!
+Adelaide de Normandie of  (Internal ID: 32425 - Historical ID 255) weak (Character - 32425)!
+Odo de Conteville of c_bayeux (Internal ID: 32669 - Historical ID 148) weak (Character - 32669)!
+Emma de Conteville of  (Internal ID: 32751 - Historical ID 156) weak (Character - 32751)!
+Robert de Conteville of c_avranches (Internal ID: 32932 - Historical ID 150) weak (Character - 32932)!
+Philippe Capet of k_france (Internal ID: 37409 - Historical ID 214) weak (Character - 37409)!

@@ -1,0 +1,30 @@
+﻿# Title gain / lost hooks.
+#
+# Both fire on the character whose title state changed (gainer/loser).
+# Title scope information is in the engine scope dump — the title key,
+# tier, and previous holder appear as named scopes. Capture into
+# event_participants via the V02-P01 parser pipeline.
+
+on_title_gain = {
+	on_actions = {
+		chronicler_on_title_gain
+	}
+}
+
+chronicler_on_title_gain = {
+	effect = {
+		chronicler_emit_title_gain = yes
+	}
+}
+
+on_title_lost = {
+	on_actions = {
+		chronicler_on_title_lost
+	}
+}
+
+chronicler_on_title_lost = {
+	effect = {
+		chronicler_emit_title_lost = yes
+	}
+}

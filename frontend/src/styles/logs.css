@@ -1,0 +1,198 @@
+/* yrv3: Logs tab — monospace viewer with virtualised list. */
+
+.logs-page {
+  padding: 24px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.logs-page__inner {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  max-width: 1400px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.logs-page__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.logs-page__title {
+  font-size: 32px;
+  margin: 0;
+}
+.logs-page__status {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: var(--fs-chrome-sm);
+}
+.logs-page__count {
+  font-family: var(--font-mono, ui-monospace, Menlo, Consolas, monospace);
+  color: var(--ink-muted);
+}
+
+.logs-page__pip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: var(--fs-chrome-xs);
+  letter-spacing: var(--ls-chrome);
+  text-transform: uppercase;
+}
+.logs-page__pip-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  background: currentColor;
+}
+.logs-page__pip--live {
+  background: rgba(50, 130, 80, 0.12);
+  color: rgb(40, 110, 70);
+}
+.logs-page__pip--idle {
+  background: rgba(110, 110, 110, 0.12);
+  color: rgb(110, 110, 110);
+}
+.logs-page__pip--dead {
+  background: rgba(180, 60, 60, 0.12);
+  color: rgb(170, 50, 50);
+}
+
+.logs-page__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: flex-end;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--rule-soft, rgba(0, 0, 0, 0.12));
+  border-radius: 6px;
+  background: var(--paper-tint, rgba(0, 0, 0, 0.02));
+}
+.logs-page__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: var(--fs-chrome-xs);
+}
+.logs-page__field--grow {
+  flex: 1 1 200px;
+}
+.logs-page__field select,
+.logs-page__field input {
+  font-family: var(--font-ui);
+  padding: 4px 8px;
+  border: 1px solid var(--rule-soft, rgba(0, 0, 0, 0.2));
+  border-radius: 4px;
+  background: var(--paper, #fff);
+  font-size: var(--fs-sm);
+}
+.logs-page__action {
+  padding: 6px 12px;
+  border: 1px solid var(--rule-soft, rgba(0, 0, 0, 0.2));
+  border-radius: 4px;
+  background: var(--paper, #fff);
+  cursor: pointer;
+  font-size: var(--fs-sm);
+}
+.logs-page__action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.logs-page__action:hover:not(:disabled) {
+  background: var(--paper-tint, rgba(0, 0, 0, 0.04));
+}
+/* ghfi: destructive "Halt backend" variant. Carmine border + label so
+   the user has visual feedback that the click ends the process; no
+   permanent red fill so it doesn't dominate the toolbar before the
+   user actually wants to use it. */
+.logs-page__action--danger {
+  border-color: rgba(170, 50, 50, 0.6);
+  color: rgb(170, 50, 50);
+}
+.logs-page__action--danger:hover:not(:disabled) {
+  background: rgba(170, 50, 50, 0.10);
+  border-color: rgb(170, 50, 50);
+}
+
+.logs-page__viewport-wrap {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.logs-page__viewport {
+  height: 100%;
+  overflow-y: auto;
+  border: 1px solid var(--rule-soft, rgba(0, 0, 0, 0.12));
+  border-radius: 6px;
+  background: var(--paper, #fff);
+  font-family: var(--font-mono, ui-monospace, Menlo, Consolas, monospace);
+  font-size: 12px;
+  line-height: 22px;
+}
+
+.logs-row {
+  display: grid;
+  grid-template-columns: 90px 70px minmax(160px, 240px) 1fr;
+  gap: 10px;
+  padding: 0 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  align-items: center;
+}
+.logs-row__ts {
+  color: var(--ink-muted);
+}
+.logs-row__level {
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  font-size: 10px;
+  text-transform: uppercase;
+}
+.logs-row__logger {
+  color: var(--ink-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.logs-row__message {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.logs-row--debug .logs-row__level { color: rgb(120, 120, 120); }
+.logs-row--info  .logs-row__level { color: rgb(60, 100, 160); }
+.logs-row--warning .logs-row__level { color: rgb(190, 130, 30); }
+.logs-row--warning { background: rgba(255, 200, 100, 0.08); }
+.logs-row--error .logs-row__level,
+.logs-row--critical .logs-row__level { color: rgb(180, 50, 50); }
+.logs-row--error,
+.logs-row--critical { background: rgba(220, 80, 80, 0.10); }
+
+.logs-page__jump-pill {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: var(--ink, #222);
+  color: var(--paper, #fff);
+  font-size: var(--fs-sm);
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+.logs-page__jump-pill:hover {
+  opacity: 0.9;
+}

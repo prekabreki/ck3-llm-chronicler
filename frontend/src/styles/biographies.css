@@ -1,0 +1,200 @@
+/* BiographiesPage — ck3_chronicler (2026-05-09).
+ *
+ * Reachable from CampaignOverview's nav panel. Visual conventions
+ * match the rest of the chronicled surfaces: paper pages, uncial
+ * titles, italic Fell for the lede, smallcaps for chrome. */
+
+.biographies-page {
+  display: flex;
+  justify-content: center;
+  padding: 48px 24px;
+}
+
+.biographies-page__inner {
+  width: 100%;
+  max-width: 880px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.biographies-page--empty {
+  padding: 96px 24px;
+  text-align: center;
+}
+
+.biographies-page__header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.biographies-page__eyebrow {
+  color: var(--ink-muted);
+  letter-spacing: var(--ls-chrome);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.biographies-page__sep {
+  opacity: 0.6;
+}
+
+.biographies-page__title {
+  font-family: var(--font-display);
+  font-size: 36px;
+  margin: 0;
+  letter-spacing: var(--ls-display);
+  color: var(--ink);
+  line-height: 1.05;
+}
+
+.biographies-page__lede {
+  color: var(--ink-soft);
+  font-size: var(--fs-md);
+  margin: 0;
+}
+
+.biographies-page__none {
+  color: var(--ink-muted);
+  text-align: center;
+  padding: 32px 0;
+}
+
+.biographies-page__list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.biographies-row {
+  list-style: none;
+}
+
+.biographies-row__btn {
+  display: grid;
+  grid-template-columns: 56px 1fr;
+  gap: 18px;
+  width: 100%;
+  padding: 18px 20px;
+  background: var(--paper);
+  border: 1px solid var(--rule-soft);
+  border-radius: 2px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 100ms ease, border-color 100ms ease;
+  font: inherit;
+  color: inherit;
+}
+
+.biographies-row__btn:hover,
+.biographies-row__btn:focus-visible {
+  background: color-mix(in oklab, var(--paper) 80%, var(--gold-glow));
+  border-color: var(--gold-deep);
+  outline: none;
+}
+
+.biographies-row__shield {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+.biographies-row__head {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.biographies-row__name-line {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.biographies-row__name {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: var(--fs-xl);
+  color: var(--ink);
+  letter-spacing: var(--ls-display);
+}
+
+.biographies-row__nick {
+  color: var(--ink-soft);
+  font-size: var(--fs-sm);
+}
+
+.biographies-row__sub {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.biographies-row__dyn {
+  font-family: var(--font-ui);
+  text-transform: uppercase;
+  font-size: var(--fs-chrome-sm);
+  letter-spacing: var(--ls-chrome);
+  color: var(--ink-muted);
+  font-weight: 600;
+}
+
+.biographies-row__span {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+}
+
+.biographies-row__excerpt {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: var(--fs-md);
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+@media (max-width: 720px) {
+  .biographies-row__btn {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  .biographies-row__shield {
+    justify-content: flex-start;
+  }
+}
+
+/* ck3_chronicler-lmex: role-grouped sections (Rulers/Consorts open;
+   Kin/Others collapse via native <details>) + per-entry relation line. */
+.biographies-page__section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+details.biographies-page__section[open] {
+  gap: 12px;
+}
+.biographies-page__section-title {
+  font-size: var(--fs-chrome-sm);
+  letter-spacing: var(--ls-chrome);
+  color: var(--ink-muted);
+  border-bottom: 1px solid var(--rule-soft);
+  padding-bottom: 8px;
+  margin: 0;
+}
+summary.biographies-page__section-title {
+  cursor: pointer;
+  list-style-position: inside;
+}
+.biographies-row__relation {
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+  margin: 0;
+}

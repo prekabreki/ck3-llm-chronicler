@@ -1,0 +1,14 @@
+﻿# Filters used by chronicler_emit_* scripted_effects.
+#
+# chronicler_is_relevant gates emissions to the v0.4 relevance tier
+# (player + immediate family + spouses + court residents + player-
+# contracted adventurers). For v0.1 it is a placeholder that always
+# fires so we capture every death. The real predicate lands in v0.4
+# when realm-wide pulse hooks come online and log volume becomes a
+# concern.
+#
+# Scope: character (the character whose event is being considered).
+
+chronicler_is_relevant = {
+	always = yes
+}

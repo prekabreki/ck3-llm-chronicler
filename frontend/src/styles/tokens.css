@@ -1,0 +1,99 @@
+/* Chronicler design tokens — ports design/styles.css :root + dark theme.
+ * Light "parchment" + dark "vellum" variants. All other styles in
+ * globals.css consume these via var(--name).
+ */
+
+:root {
+  /* Light "parchment" theme */
+  --paper:        #F2E9D2;
+  --paper-edge:   #E5D7B2;
+  --paper-deep:   #DCC89A;
+  --vellum:       #EFE3C2;     /* page background slightly warmer */
+  --ink:          #1A1410;     /* near-black, warm */
+  --ink-soft:     #3F3326;
+  --ink-muted:    #6B5A45;
+  --ink-faint:    #8E7A5E;
+  --rule:         #C9B68B;     /* hairline gold-tinted */
+  --rule-soft:    #D9C99E;
+
+  --gold:         #A8801F;
+  --gold-deep:    #7C5A14;
+  --gold-bright:  #C9A24A;
+  --gold-glow:    #E6C66A;
+
+  --azure:        #1E3A8A;     /* royal blue */
+  --azure-deep:   #142459;
+  --azure-light:  #4760B5;
+
+  --carmine:      #9C2E2A;     /* manuscript red — drop caps, deaths */
+  --carmine-deep: #6F1F1C;
+  --vert:         #335E3A;     /* heraldic green */
+  --purpure:      #4A2C56;     /* royal purple */
+
+  --sable:        #1B1714;
+  --argent:       #E8DEC1;
+
+  --shadow-soft:  0 1px 2px rgba(74, 54, 22, 0.10), 0 6px 18px rgba(74, 54, 22, 0.08);
+  --shadow-press: 0 1px 0 rgba(74, 54, 22, 0.18) inset;
+
+  --radius-sm: 2px;
+  --radius-md: 3px;
+  --radius-lg: 4px;
+
+  /* Type families (vysp). Chrome (sans) reads very different from prose
+   * (serif) at the same px size, so the chrome scale is split out below. */
+  --font-ui:      'Inter', system-ui, sans-serif;          /* nav, buttons, smallcaps labels, table heads */
+  --font-display: 'Cormorant Unicase', 'Cormorant SC', serif;  /* hero titles, drop caps, dynasty/character names */
+  --font-body:    'Spectral', 'EB Garamond', serif;        /* dense UI body — sturdier than Garamond at 14-16px */
+  --font-prose:   'EB Garamond', 'Spectral', serif;        /* long-form biography prose; keeps the 18px feel */
+  --font-italic:  'IM Fell DW Pica', 'EB Garamond', serif; /* marginalia, intro paragraphs, asides */
+  --font-mono:    'JetBrains Mono', ui-monospace, monospace; /* CK3 ids, dates, paths */
+
+  /* Type scale — chrome (sans labels) and body/prose (serif) split. */
+  --fs-chrome-xs: 11px;     /* eyebrow labels, count badges */
+  --fs-chrome-sm: 12px;     /* table headers, pip text */
+  --fs-chrome-md: 13px;     /* nav tabs, buttons */
+  --fs-chrome-lg: 14px;     /* topbar tab when active */
+
+  --fs-xs:  13px;           /* compact body, source crumbs */
+  --fs-sm:  15px;           /* default body in chrome contexts */
+  --fs-md:  16px;           /* table rows, mem-card body */
+  --fs-lg:  18px;           /* prose body (drop-cap pages) */
+  --fs-xl:  22px;           /* card name, mem-card title */
+  --fs-2xl: 28px;           /* page title (Codex, Library) */
+  --fs-3xl: 38px;           /* folio recto title */
+  --fs-4xl: 48px;           /* Library title */
+  --fs-5xl: 56px;           /* Closing title, Dynasty Wall */
+
+  /* Letter-spacing */
+  --ls-chrome:  0.04em;     /* default for sans labels — tighter than the old 0.16em */
+  --ls-display: -0.005em;
+}
+
+[data-theme="dark"] {
+  --paper:        #1B1A1F;
+  --paper-edge:   #2A2730;
+  --paper-deep:   #14131A;
+  --vellum:       #221F26;
+  --ink:          #E8DEC1;
+  --ink-soft:     #C4B89A;
+  --ink-muted:    #8E8470;
+  --ink-faint:    #6A6354;
+  --rule:         #5A4A24;
+  --rule-soft:    #3D331C;
+
+  --gold:         #C9A24A;
+  --gold-deep:    #8B6E22;
+  --gold-bright:  #E6C66A;
+  --gold-glow:    #F2DA8C;
+
+  --azure:        #6B85D6;
+  --azure-deep:   #2D447A;
+  --azure-light:  #8FA3DD;
+
+  --carmine:      #C45550;
+  --carmine-deep: #8E2E29;
+  /* ck3_chronicler-0o23: light-theme heraldic green is too dark to read
+     on dark vellum; lift it the same way carmine/gold are lifted. */
+  --vert:         #6B9E72;
+}
