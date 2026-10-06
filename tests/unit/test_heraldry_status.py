@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -72,40 +73,69 @@ def test_compute_heraldry_status_reads_manifest_and_counts(tmp_path: Path) -> No
     assert status.is_stale is False
 
 
-def test_compute_heraldry_status_flags_stale_when_source_newer(tmp_path: Path) -> None:
-    h = tmp_path / "h"
+def _seed_extracted(h: Path, *, extracted_at: datetime) -> None:
     _seed_palette(h, n=2)
     _seed_pattern_pngs(h, 1)
     _seed_emblem_pngs(h, 1)
-
-    # Recorded extraction was a year ago.
-    old_ts = (datetime.now(UTC) - timedelta(days=365)).isoformat()
-    _seed_manifest(h, extracted_at=old_ts)
-
-    # Build a fake CK3 install with the CoA dir present (mtime is now,
-    # which is post-old_ts → stale).
-    ck3 = tmp_path / "ck3"
-    coa = ck3 / "game" / "gfx" / "coat_of_arms"
-    coa.mkdir(parents=True)
-
-    status = compute_heraldry_status(h, ck3_install_dir=ck3)
-    assert status.is_stale is True
+    _seed_manifest(h, extracted_at=extracted_at.isoformat())
 
 
-def test_compute_heraldry_status_not_stale_when_source_older(tmp_path: Path) -> None:
+def _seed_ck3(root: Path, *, at: datetime) -> Path:
+    """A fake CK3 install whose heraldry sources (and dirs) all date to ``at``."""
+    coa = root / "game" / "gfx" / "coat_of_arms"
+    texture = coa / "patterns" / "pattern_solid.dds"
+    named = root / "game" / "common" / "named_colors" / "default_colors.txt"
+    texture.parent.mkdir(parents=True)
+    named.parent.mkdir(parents=True)
+    texture.write_bytes(b"DDS ")
+    named.write_text("colors = {}", encoding="utf-8")
+    stamp = at.timestamp()
+    for path in (texture, texture.parent, coa, named):
+        os.utime(path, (stamp, stamp))
+    return root
+
+
+EXTRACTED_AT = datetime(2026, 7, 28, tzinfo=UTC)
+
+
+def test_compute_heraldry_status_not_stale_when_sources_older(tmp_path: Path) -> None:
     h = tmp_path / "h"
-    _seed_palette(h, n=2)
-    _seed_pattern_pngs(h, 1)
-    _seed_emblem_pngs(h, 1)
+    _seed_extracted(h, extracted_at=EXTRACTED_AT)
+    ck3 = _seed_ck3(tmp_path / "ck3", at=EXTRACTED_AT - timedelta(days=30))
 
-    # Recorded extraction is now; CoA dir below is created first so its
-    # mtime predates the manifest stamp.
+    assert compute_heraldry_status(h, ck3_install_dir=ck3).is_stale is False
+
+
+def test_compute_heraldry_status_flags_texture_rewritten_in_place(tmp_path: Path) -> None:
+    """A patch that rewrites a texture leaves every directory mtime alone —
+    only the file's own mtime moves, and that alone must flag stale."""
+    h = tmp_path / "h"
+    _seed_extracted(h, extracted_at=EXTRACTED_AT)
+    ck3 = _seed_ck3(tmp_path / "ck3", at=EXTRACTED_AT - timedelta(days=30))
+    texture = ck3 / "game" / "gfx" / "coat_of_arms" / "patterns" / "pattern_solid.dds"
+    patched = (EXTRACTED_AT + timedelta(days=60)).timestamp()
+    os.utime(texture, (patched, patched))
+
+    assert compute_heraldry_status(h, ck3_install_dir=ck3).is_stale is True
+
+
+def test_compute_heraldry_status_flags_named_colors_patched(tmp_path: Path) -> None:
+    """The palette comes from default_colors.txt, outside the CoA tree."""
+    h = tmp_path / "h"
+    _seed_extracted(h, extracted_at=EXTRACTED_AT)
+    ck3 = _seed_ck3(tmp_path / "ck3", at=EXTRACTED_AT - timedelta(days=30))
+    named = ck3 / "game" / "common" / "named_colors" / "default_colors.txt"
+    patched = (EXTRACTED_AT + timedelta(days=60)).timestamp()
+    os.utime(named, (patched, patched))
+
+    assert compute_heraldry_status(h, ck3_install_dir=ck3).is_stale is True
+
+
+def test_compute_heraldry_status_not_stale_without_sources(tmp_path: Path) -> None:
+    """An install with no heraldry sources has nothing to be stale against."""
+    h = tmp_path / "h"
+    _seed_extracted(h, extracted_at=EXTRACTED_AT - timedelta(days=365))
     ck3 = tmp_path / "ck3"
-    coa = ck3 / "game" / "gfx" / "coat_of_arms"
-    coa.mkdir(parents=True)
+    (ck3 / "game" / "gfx" / "coat_of_arms").mkdir(parents=True)
 
-    fresh_ts = (datetime.now(UTC) + timedelta(seconds=5)).isoformat()
-    _seed_manifest(h, extracted_at=fresh_ts)
-
-    status = compute_heraldry_status(h, ck3_install_dir=ck3)
-    assert status.is_stale is False
+    assert compute_heraldry_status(h, ck3_install_dir=ck3).is_stale is False

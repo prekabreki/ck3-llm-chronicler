@@ -488,10 +488,11 @@ def test_doctor_heraldry_freshness_probe_flags_stale_extract(
     )
     (heraldry_dir / "palette.json").write_text(json.dumps({"red": "#FF0000"}))
 
-    # Fake CK3 install dir with a fresh CoA subdir mtime (now).
+    # Fake CK3 install with a CoA source file written now (post-extract).
     fake_install = tmp_path / "ck3_install"
     coa_dir = fake_install / _COA_SUBPATH
     coa_dir.mkdir(parents=True)
+    (coa_dir / "pattern_solid.dds").write_bytes(b"DDS ")
     monkeypatch.setattr(doctor, "find_ck3_install", lambda: fake_install)
 
     result = doctor.probe_heraldry_freshness()

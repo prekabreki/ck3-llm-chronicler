@@ -420,9 +420,9 @@ class HeraldryStatus:
     """Summary of the heraldry-extraction state for the Settings UI.
 
     Returned by :func:`compute_heraldry_status` and serialised by the
-    f9w.2 (a3jc) endpoint. ``is_stale`` is True when the source CoA
-    directory under the CK3 install has a later mtime than the
-    recorded extraction time — a soft hint to re-extract after a CK3
+    f9w.2 (a3jc) endpoint. ``is_stale`` is True when any source file
+    the extractor reads (the CoA tree, the named-colours file) has a
+    later mtime than the recorded extraction time — a soft hint to re-extract after a CK3
     patch.
     """
 
@@ -434,6 +434,27 @@ class HeraldryStatus:
     is_stale: bool
 
 
+def _newest_source_mtime(ck3_install_dir: Path) -> datetime | None:
+    """Newest mtime across everything the extractor reads, or ``None``.
+
+    Walks every file under the CoA tree plus the named-colours file the
+    palette comes from. The CoA directory's own mtime is not enough: it
+    moves only when an entry is added or removed, so a patch that rewrites
+    textures in place would read as up to date. ~1,600 stats, ~50 ms.
+    """
+    newest: float | None = None
+    coa_dir = ck3_install_dir / _COA_SUBPATH
+    sources = [p for p in coa_dir.rglob("*") if p.is_file()] if coa_dir.is_dir() else []
+    named_colors = ck3_install_dir / _NAMED_COLORS_FILE
+    if named_colors.is_file():
+        sources.append(named_colors)
+    for path in sources:
+        mtime = path.stat().st_mtime
+        if newest is None or mtime > newest:
+            newest = mtime
+    return None if newest is None else datetime.fromtimestamp(newest, tz=UTC)
+
+
 def compute_heraldry_status(
     heraldry_dir: Path,
     ck3_install_dir: Path | None,
@@ -442,8 +463,8 @@ def compute_heraldry_status(
 
     Reads ``manifest.json`` for the timestamp + lists, falls back to
     counting files on disk if the manifest is missing/unreadable.
-    Compares the timestamp against ``<ck3_install_dir>/<_COA_SUBPATH>``
-    mtime to decide ``is_stale``. ``ck3_install_dir`` may be ``None``
+    Compares the timestamp against the newest source-file mtime under
+    the CK3 install to decide ``is_stale``. ``ck3_install_dir`` may be ``None``
     when the install isn't configured — stale check is skipped.
     """
     manifest_path = heraldry_dir / "manifest.json"
@@ -479,16 +500,14 @@ def compute_heraldry_status(
 
     is_stale = False
     if extracted and last_extraction_at and ck3_install_dir is not None:
-        coa_dir = ck3_install_dir / _COA_SUBPATH
-        if coa_dir.is_dir():
-            try:
-                last_dt = datetime.fromisoformat(last_extraction_at)
-                if last_dt.tzinfo is None:
-                    last_dt = last_dt.replace(tzinfo=UTC)
-                source_mtime = datetime.fromtimestamp(coa_dir.stat().st_mtime, tz=UTC)
-                is_stale = source_mtime > last_dt
-            except (OSError, ValueError):
-                is_stale = False
+        try:
+            last_dt = datetime.fromisoformat(last_extraction_at)
+            if last_dt.tzinfo is None:
+                last_dt = last_dt.replace(tzinfo=UTC)
+            source_mtime = _newest_source_mtime(ck3_install_dir)
+            is_stale = source_mtime is not None and source_mtime > last_dt
+        except (OSError, ValueError):
+            is_stale = False
 
     return HeraldryStatus(
         extracted=extracted,
