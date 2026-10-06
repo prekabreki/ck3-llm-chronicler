@@ -15,10 +15,10 @@ Usage::
 
 from __future__ import annotations
 
-import shutil
 import subprocess
 import sys
-from pathlib import Path
+
+from chronicler.save.rakaly import find_rakaly
 
 INSTALL_HINT = """\
 rakaly not found on PATH.
@@ -33,35 +33,6 @@ like:
 
 …and re-run.
 """
-
-
-def repo_root() -> Path:
-    return Path(__file__).resolve().parent.parent
-
-
-def find_rakaly() -> str | None:
-    """Locate the rakaly binary, preferring PATH then repo-local release."""
-    on_path = shutil.which("rakaly") or shutil.which("rakaly.exe")
-    if on_path:
-        return on_path
-
-    # Repo-local extracted release: rakaly-*/<platform>/rakaly[.exe]
-    for release_dir in sorted(repo_root().glob("rakaly-*")):
-        if not release_dir.is_dir():
-            continue
-        for exe_name in ("rakaly.exe", "rakaly"):
-            # Some releases extract to <release>/rakaly (flat) and others to
-            # <release>/<platform-triple>/rakaly (nested). Search both.
-            direct = release_dir / exe_name
-            if direct.is_file():
-                return str(direct)
-            for inner in release_dir.iterdir():
-                if not inner.is_dir():
-                    continue
-                nested = inner / exe_name
-                if nested.is_file():
-                    return str(nested)
-    return None
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -33,15 +33,27 @@ def fake_save(tmp_path: Path) -> Path:
     return p
 
 
-def test_find_rakaly_returns_none_when_not_present(monkeypatch) -> None:
+def _release(root: Path, version: str) -> Path:
+    exe = root / f"rakaly-{version}" / "x86_64-unknown-linux-musl" / "rakaly"
+    exe.parent.mkdir(parents=True)
+    exe.write_bytes(b"")
+    return exe
+
+
+def test_find_rakaly_returns_none_when_not_present(monkeypatch, tmp_path: Path) -> None:
     """When neither PATH nor repo-local has rakaly, find_rakaly is None."""
     monkeypatch.setattr("chronicler.save.rakaly.shutil.which", lambda _: None)
-    # Pretend the repo has no rakaly-* directories
-    with patch("chronicler.save.rakaly.Path") as mock_path:
-        mock_path.return_value.resolve.return_value.parents = [Path("/nonexistent")] * 5
-        mock_path.return_value.glob.return_value = []
-        # Just verify shutil.which path returned None
-        assert find_rakaly() is None or find_rakaly() is not None  # tolerant
+    assert find_rakaly(repo_root=tmp_path) is None
+
+
+def test_find_rakaly_prefers_newest_repo_local_release(monkeypatch, tmp_path: Path) -> None:
+    """A stale release left beside a fresh one must not win: 0.8.9 sorts after
+    0.8.21 by name, and each rakaly only reads the CK3 patches it knows."""
+    monkeypatch.setattr("chronicler.save.rakaly.shutil.which", lambda _: None)
+    _release(tmp_path, "0.8.9")
+    _release(tmp_path, "0.8.15")
+    newest = _release(tmp_path, "0.8.21")
+    assert find_rakaly(repo_root=tmp_path) == str(newest)
 
 
 def test_find_rakaly_uses_path_first(monkeypatch) -> None:

@@ -4,4 +4,4 @@ tags={
 	"Events"
 }
 name="Chronicler"
-supported_version="1.19.*"
+supported_version="1.20.*"

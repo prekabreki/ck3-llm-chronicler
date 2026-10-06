@@ -50,6 +50,9 @@ If rakaly raises:
 
 - Update the rakaly binary at `<repo>/rakaly-*/`. Releases:
   https://github.com/rakaly/cli/releases/latest
+  On Linux, bump `RAKALY_VER` in `scripts/fetch-tools.sh` and re-run it.
+  The finder picks the highest version present, so the old release can
+  stay where it is; the script's closing line prints the version it found.
 - After replacing, re-run the verification command.
 
 If rakaly is current but parsing fails on a top-level-key shape change,

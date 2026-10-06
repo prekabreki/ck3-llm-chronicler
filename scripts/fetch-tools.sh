@@ -10,8 +10,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-RAKALY_VER="0.8.15"
-TIGER_VER="1.18.0"
+RAKALY_VER="0.8.21"
+TIGER_VER="1.19.0"
 RAKALY_TRIPLE="x86_64-unknown-linux-musl"
 
 tmp="$(mktemp -d)"
@@ -34,5 +34,8 @@ tar -xzf "$tmp/tiger.tgz" -C "ck3-tiger-linux-v${TIGER_VER}/" --strip-components
 chmod +x "ck3-tiger-linux-v${TIGER_VER}"/ck3-tiger*
 
 echo "==> done:"
-python scripts/run_rakaly.py --version >/dev/null 2>&1 && echo "    rakaly OK" || echo "    rakaly NOT found by run_rakaly.py"
+# Through uv: run_rakaly.py uses the package's own finder, so it needs the venv.
+# Printing the version proves the finder picked THIS release, not an older one.
+uv run --quiet python scripts/run_rakaly.py --version 2>/dev/null | sed 's/^/    rakaly /' \
+  || echo "    rakaly NOT found by run_rakaly.py"
 "ck3-tiger-linux-v${TIGER_VER}/ck3-tiger" --version 2>/dev/null | sed 's/^/    /'

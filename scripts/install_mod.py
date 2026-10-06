@@ -35,7 +35,7 @@ DEFAULT_USER_MOD_FOLDER = (
     Path.home() / "Documents" / "Paradox Interactive" / "Crusader Kings III" / "mod"
 )
 MOD_NAME = "chronicler"
-SUPPORTED_VERSION = "1.19.*"
+SUPPORTED_VERSION = "1.20.*"
 
 
 def repo_root() -> Path:

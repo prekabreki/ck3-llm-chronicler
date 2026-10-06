@@ -32,6 +32,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import re
 import shutil
 import subprocess
 import sys
@@ -129,13 +130,26 @@ def _dump_rakaly_failure(stdout: bytes, save_name: str, decode_error: str) -> Pa
         return None
 
 
-def find_rakaly() -> str | None:
+def _release_version(release_dir: Path) -> tuple[int, ...]:
+    """Version tuple parsed from a ``rakaly-<version>`` dir name, ``()`` if none.
+
+    Compared numerically so ``rakaly-0.8.10`` outranks ``rakaly-0.8.9`` —
+    a plain name sort gets that backwards.
+    """
+    match = re.fullmatch(r"rakaly-(\d+(?:\.\d+)*)", release_dir.name)
+    return tuple(int(part) for part in match.group(1).split(".")) if match else ()
+
+
+def find_rakaly(repo_root: Path | None = None) -> str | None:
     """Locate the rakaly executable.
 
     Preference order:
     1. ``rakaly`` / ``rakaly.exe`` on PATH (system install)
     2. Repo-local extracted release at ``rakaly-*/<platform>/rakaly[.exe]``
-       or ``rakaly-*/rakaly[.exe]`` (flat layout)
+       or ``rakaly-*/rakaly[.exe]`` (flat layout), newest version first.
+       ``scripts/fetch-tools.sh`` never deletes an older release, and each
+       rakaly release only reads saves from the CK3 patches it knows, so
+       after a bump the stale binary must not win.
 
     Returns the absolute path to the binary, or ``None`` if not found.
     """
@@ -143,15 +157,17 @@ def find_rakaly() -> str | None:
     if on_path:
         return on_path
 
-    repo_root = Path(__file__).resolve().parents[3]
-    for release_dir in sorted(repo_root.glob("rakaly-*")):
+    if repo_root is None:
+        repo_root = Path(__file__).resolve().parents[3]
+    releases = sorted(repo_root.glob("rakaly-*"), key=_release_version, reverse=True)
+    for release_dir in releases:
         if not release_dir.is_dir():
             continue
         for exe_name in ("rakaly.exe", "rakaly"):
             direct = release_dir / exe_name
             if direct.is_file():
                 return str(direct)
-            for inner in release_dir.iterdir():
+            for inner in sorted(release_dir.iterdir()):
                 if not inner.is_dir():
                     continue
                 nested = inner / exe_name

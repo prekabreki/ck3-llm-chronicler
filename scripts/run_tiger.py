@@ -16,6 +16,7 @@ itself from the registry on Windows. Pass ``--vanilla`` if it can't.
 from __future__ import annotations
 
 import argparse
+import re
 import shutil
 import subprocess
 import sys
@@ -34,12 +35,20 @@ def repo_root() -> Path:
     return Path(__file__).resolve().parent.parent
 
 
+def _release_version(release_dir: Path) -> tuple[int, ...]:
+    """Version tuple from a ``ck3-tiger-<platform>-v<version>`` dir, ``()`` if none."""
+    match = re.search(r"v?(\d+(?:\.\d+)*)$", release_dir.name)
+    return tuple(int(part) for part in match.group(1).split(".")) if match else ()
+
+
 def find_tiger() -> str | None:
     on_path = shutil.which("ck3-tiger") or shutil.which("ck3-tiger.exe")
     if on_path:
         return on_path
     # Fall back to a repo-local extracted release: ck3-tiger-*/ck3-tiger.exe
-    for candidate in sorted(repo_root().glob("ck3-tiger-*")):
+    # Newest version first: fetch-tools.sh leaves older releases in place, and
+    # a name sort ranks ck3-tiger-linux-v1.9.0 above v1.19.0.
+    for candidate in sorted(repo_root().glob("ck3-tiger-*"), key=_release_version, reverse=True):
         if not candidate.is_dir():
             continue
         for exe in ("ck3-tiger.exe", "ck3-tiger"):
