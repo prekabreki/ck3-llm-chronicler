@@ -29,6 +29,7 @@ test, and binding one would make these flaky for no coverage.
 
 from __future__ import annotations
 
+import select
 import signal
 import subprocess
 import sys
@@ -61,6 +62,9 @@ _PROGRAM = textwrap.dedent(
             # The real capture_signals context manager: installs uvicorn's
             # handler, restores the previous one on exit, then re-raises.
             with server.capture_signals():
+                # The handshake _spawn waits on: printed only once the
+                # handlers are installed, so no signal can beat them.
+                print("HANDLERS-INSTALLED", flush=True)
                 while not server.should_exit:
                     await asyncio.sleep(0.02)
 
@@ -97,14 +101,27 @@ def _spawn(
         stderr=subprocess.PIPE,
         text=True,
     )
-    # Give the child time to import uvicorn and enter capture_signals.
-    # Signalling before the handlers are installed would exercise the default
-    # disposition and pass for the wrong reason — the precise failure mode
-    # this file exists to rule out.
-    time.sleep(2.0)
-    if proc.poll() is not None:
-        out, err = proc.communicate()
-        pytest.fail(f"helper exited before it could be signalled: {proc.returncode}\n{out}\n{err}")
+    # Wait for the child to report its handlers are installed. Signalling
+    # before that would exercise the default disposition and pass for the
+    # wrong reason — the precise failure mode this file exists to rule out.
+    # A fixed sleep used to stand in for this and raced on any machine where
+    # importing the helper's modules takes longer than the sleep (~7s cold).
+    deadline = time.monotonic() + _TIMEOUT
+    assert proc.stdout is not None
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            proc.kill()
+            pytest.fail("helper never reported its signal handlers installed")
+        readable, _, _ = select.select([proc.stdout], [], [], remaining)
+        line = proc.stdout.readline() if readable else ""
+        if line.strip() == "HANDLERS-INSTALLED":
+            break
+        if proc.poll() is not None:
+            out, err = proc.communicate()
+            pytest.fail(
+                f"helper exited before it could be signalled: {proc.returncode}\n{out}\n{err}"
+            )
     return proc, marker
 
 
