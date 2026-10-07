@@ -156,6 +156,21 @@ def pytest_configure(config) -> None:  # noqa: ARG001 — pytest hook signature
     os.environ.setdefault("CHRONICLER_ARCHIVE_SYNC_DISABLED", "1")
 
 
+@pytest.fixture(autouse=True)
+def _isolate_data_dir(
+    tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Point ``CHRONICLER_DATA_DIR`` at a throwaway dir for EVERY test.
+
+    Without this, any test that reaches ``get_data_dir()`` without the
+    ``api`` fixture writes into the developer's real data dir — the
+    invalid-JSON rakaly test was dropping ``fake.ck3.bin`` failure dumps
+    into ``~/.local/share/chronicler/rakaly-failures/`` on every run.
+    Tests that need a specific data dir still override it themselves.
+    """
+    monkeypatch.setenv("CHRONICLER_DATA_DIR", str(tmp_path_factory.mktemp("data-dir")))
+
+
 @pytest.fixture
 def api(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[CampaignHarness]:
     """API test harness — see :mod:`tests.helpers.api` (audit M-T2).
