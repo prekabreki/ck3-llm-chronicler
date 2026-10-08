@@ -48,6 +48,41 @@ _FAMILY_CHAR_ID_KEYS: frozenset[str] = frozenset(
 )
 
 
+def character_entry(value: Any) -> dict[str, Any] | None:
+    """One character record from a ``living`` / ``dead_unprunable`` /
+    ``dead_prunable`` slot, or None when the slot holds no record.
+
+    CK3 1.20 writes every ``dead_unprunable`` entry twice, and rakaly's
+    ``--duplicate-keys group`` (needed for multi-charge coats of arms)
+    folds the repeated id into a list of identical dicts. Take the last,
+    matching rakaly's default last-wins semantics. Treating that list as
+    "not a record" hid every dead_unprunable character from the parser,
+    so a ruler who died straight into it was never recorded as dead.
+    """
+    if isinstance(value, list):
+        dicts = [v for v in value if isinstance(v, dict)]
+        return dicts[-1] if dicts else None
+    return value if isinstance(value, dict) else None
+
+
+def lookup_character_record(data: dict[str, Any], ck3_id: int) -> dict[str, Any] | None:
+    """The raw record for ``ck3_id`` from ``living``, ``dead_unprunable`` or
+    ``characters.dead_prunable`` (checked in that order), or None."""
+    key = str(ck3_id)
+    characters = data.get("characters")
+    collections = (
+        data.get("living"),
+        data.get("dead_unprunable"),
+        characters.get("dead_prunable") if isinstance(characters, dict) else None,
+    )
+    for collection in collections:
+        if isinstance(collection, dict):
+            raw = character_entry(collection.get(key))
+            if raw is not None:
+                return raw
+    return None
+
+
 def extract_character_record(
     data: dict[str, Any],
     ck3_id: int,
@@ -82,23 +117,7 @@ def extract_character_record(
     in the source ``traits`` array remain so ID-driven downstream code
     (rare) keeps working.
     """
-    key = str(ck3_id)
-    raw: dict[str, Any] | None = None
-    living = data.get("living") or {}
-    if isinstance(living, dict) and key in living and isinstance(living[key], dict):
-        raw = living[key]
-    else:
-        dead = data.get("dead_unprunable") or {}
-        if isinstance(dead, dict) and key in dead and isinstance(dead[key], dict):
-            raw = dead[key]
-    if raw is None:
-        dead_prunable = (data.get("characters") or {}).get("dead_prunable") or {}
-        if (
-            isinstance(dead_prunable, dict)
-            and key in dead_prunable
-            and isinstance(dead_prunable[key], dict)
-        ):
-            raw = dead_prunable[key]
+    raw = lookup_character_record(data, ck3_id)
     if raw is None:
         return None
 

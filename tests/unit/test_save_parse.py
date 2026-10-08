@@ -349,6 +349,101 @@ def test_dead_prunable_character_extracted() -> None:
     assert char.death_cause == "death_heart_attack"
 
 
+def _harold_dead_record() -> dict:
+    return {
+        "first_name": "Harold",
+        "birth": "1022.1.1",
+        "was_playable": True,
+        "family_data": {"child": [38542]},
+        "dead_data": {"date": "1069.11.5", "reason": "death_wounded_1", "kills": [29827]},
+    }
+
+
+def test_grouped_duplicate_dead_unprunable_record_parsed() -> None:
+    """CK3 1.20 writes every dead_unprunable entry twice, and rakaly's
+    ``--duplicate-keys group`` folds the repeated id into a list of two
+    identical dicts. The parser used to skip any non-dict record, so no
+    dead_unprunable character reached snap.characters at all (live on
+    campaign 00f1e372: King Harold #32638 died 1069.11.5 and was never
+    recorded as dead)."""
+    save = _minimal_save(dead_unprunable={"32638": [_harold_dead_record(), _harold_dead_record()]})
+    char = parse_save(save).characters[32638]
+    assert char.first_name == "Harold"
+    assert char.is_dead is True
+    assert char.death_date == "1069.11.5"
+    assert char.death_cause == "death_wounded_1"
+
+
+def test_grouped_duplicate_dead_unprunable_record_extracted() -> None:
+    save = _minimal_save(dead_unprunable={"32638": [_harold_dead_record(), _harold_dead_record()]})
+    record = extract_character_record(save, 32638)
+    assert record is not None
+    assert record["dead_data"]["reason"] == "death_wounded_1"
+
+
+def test_living_to_grouped_dead_unprunable_emits_death_event() -> None:
+    """End-to-end shape of the Harold sequence: alive in prev, a grouped
+    duplicate in dead_unprunable in curr."""
+    from chronicler.save.diff import diff_snapshots
+    from chronicler.schema import DeathEvent
+
+    prev_save = _minimal_save(
+        living={
+            "32638": {
+                "first_name": "Harold",
+                "birth": "1022.1.1",
+                "alive_data": {"memories": []},
+                "family_data": {},
+            }
+        }
+    )
+    prev_save["meta_data"]["meta_date"] = "1069.10.3"
+    curr_save = _minimal_save(
+        dead_unprunable={"32638": [_harold_dead_record(), _harold_dead_record()]}
+    )
+    curr_save["meta_data"]["meta_date"] = "1069.12.1"
+
+    events = diff_snapshots(parse_save(prev_save), parse_save(curr_save), tracked_filter={32638})
+    deaths = [e for e in events if isinstance(e.event, DeathEvent)]
+    assert len(deaths) == 1
+    assert deaths[0].event.d == "1069.11.5"
+
+
+def test_tracked_character_first_observed_dead_emits_death_event() -> None:
+    """A tracked character missing from prev but dead in curr has died
+    unobserved — the baseline never held them (e.g. persisted by a parser
+    that dropped their record). Death is terminal and fully described by
+    curr alone, so it must still fire; otherwise death_date stays NULL and
+    the biography never gets scheduled."""
+    from chronicler.save.diff import diff_snapshots
+    from chronicler.schema import DeathEvent
+
+    prev_save = _minimal_save()
+    prev_save["meta_data"]["meta_date"] = "1076.1.1"
+    curr_save = _minimal_save(dead_unprunable={"32638": _harold_dead_record()})
+    curr_save["meta_data"]["meta_date"] = "1076.2.1"
+
+    events = diff_snapshots(parse_save(prev_save), parse_save(curr_save), tracked_filter={32638})
+    assert [type(e.event) for e in events] == [DeathEvent]
+    assert events[0].event.d == "1069.11.5"
+
+
+def test_first_observation_alive_or_untracked_emits_nothing() -> None:
+    """The first-observation death is scoped: a living newcomer has no
+    prev to diff against, and the unfiltered path must not turn every
+    dead character missing from a stale baseline into a death event."""
+    from chronicler.save.diff import diff_snapshots
+
+    prev_save = _minimal_save()
+    curr_save = _minimal_save(
+        living={"1": {"first_name": "A", "alive_data": {"memories": []}}},
+        dead_unprunable={"32638": _harold_dead_record()},
+    )
+    prev, curr = parse_save(prev_save), parse_save(curr_save)
+    assert diff_snapshots(prev, curr, tracked_filter={1}) == []
+    assert diff_snapshots(prev, curr) == []
+
+
 def test_female_flag_handled() -> None:
     save = _minimal_save(
         living={

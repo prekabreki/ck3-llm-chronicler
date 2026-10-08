@@ -551,6 +551,24 @@ def diff_snapshots(
             # baseline. We skip the per-character diff (no prev to
             # compare against) but log it so silent first-tick event
             # loss has a search-engine hit.
+            #
+            # A tracked character first observed already DEAD is the one
+            # exception: death is terminal and fully described by curr
+            # alone, and skipping it leaves death_date NULL so the
+            # biography is never scheduled. This is how campaigns whose
+            # baseline was persisted by a parser that dropped grouped
+            # dead_unprunable records recover their missed deaths.
+            # Scoped to the tracked path: unfiltered, every dead character
+            # absent from a stale baseline would turn into a DeathEvent.
+            if tracked_filter is not None and (c.is_dead or c.death_date is not None):
+                log.info(
+                    "diff_snapshots: tracked character %d first observed dead "
+                    "(died %s); emitting the missed death",
+                    cid,
+                    c.death_date,
+                )
+                out.append(_make_death(c, date))
+                continue
             log.info(
                 "diff_snapshots: character %d in curr but not prev — first "
                 "observation; events on this tick are skipped (tracked=%s)",

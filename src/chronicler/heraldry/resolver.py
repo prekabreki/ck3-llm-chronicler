@@ -23,6 +23,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from chronicler.save.raw_record import lookup_character_record
+
 log = logging.getLogger(__name__)
 
 
@@ -163,14 +165,4 @@ def _dynasty_coa_id(dynasties_root: dict[str, Any], dynasty_id: Any) -> int | No
 def _lookup_character(raw_save_data: dict[str, Any], character_id: int) -> dict[str, Any] | None:
     """Return the raw character record from living, dead_unprunable, or
     characters.dead_prunable, or None."""
-    key = str(character_id)
-    living = raw_save_data.get("living") or {}
-    if isinstance(living, dict) and isinstance(living.get(key), dict):
-        return living[key]
-    dead = raw_save_data.get("dead_unprunable") or {}
-    if isinstance(dead, dict) and isinstance(dead.get(key), dict):
-        return dead[key]
-    dead_prunable = (raw_save_data.get("characters") or {}).get("dead_prunable") or {}
-    if isinstance(dead_prunable, dict) and isinstance(dead_prunable.get(key), dict):
-        return dead_prunable[key]
-    return None
+    return lookup_character_record(raw_save_data, character_id)

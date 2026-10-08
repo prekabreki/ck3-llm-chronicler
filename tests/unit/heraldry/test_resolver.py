@@ -52,6 +52,15 @@ def test_resolve_character_coa_finds_dead_character() -> None:
     assert resolve_character_coa(save, 100) == coa
 
 
+def test_resolve_character_coa_finds_grouped_duplicate_dead_character() -> None:
+    """CK3 1.20 writes dead_unprunable entries twice; rakaly groups them
+    into a list of identical dicts."""
+    coa = {"pattern": "pattern_solid.dds"}
+    save = _build_save(char_id=100, char_in_dead=True, coa=coa)
+    save["dead_unprunable"]["100"] = [save["dead_unprunable"]["100"]] * 2
+    assert resolve_character_coa(save, 100) == coa
+
+
 def test_resolve_character_coa_finds_dead_prunable_character() -> None:
     """Freshly-dead characters (in characters.dead_prunable) resolve too."""
     coa = {"pattern": "pattern_solid.dds"}

@@ -52,7 +52,7 @@ from chronicler.save.autotrack import (
 )
 from chronicler.save.ck3_names import resolve_character_name
 from chronicler.save.localization import decode_ck3_name, strip_loca_markup
-from chronicler.save.raw_record import extract_character_record
+from chronicler.save.raw_record import character_entry, extract_character_record
 from chronicler.save.snapshot import (
     ActivitySnapshot,
     ArtifactSnapshot,
@@ -1175,11 +1175,12 @@ def parse_save(data: dict[str, Any]) -> SaveSnapshot:
     if isinstance(living, dict):
         for raw_id, raw in living.items():
             cid = _coerce_int(raw_id)
-            if cid is None or not isinstance(raw, dict):
+            record = character_entry(raw)
+            if cid is None or record is None:
                 continue
             characters[cid] = _parse_character(
                 cid,
-                raw,
+                record,
                 is_dead=False,
                 memory_index=memory_index,
                 cultures_lookup=cultures_lookup,
@@ -1189,12 +1190,13 @@ def parse_save(data: dict[str, Any]) -> SaveSnapshot:
     if isinstance(dead, dict):
         for raw_id, raw in dead.items():
             cid = _coerce_int(raw_id)
-            if cid is None or not isinstance(raw, dict):
+            record = character_entry(raw)
+            if cid is None or record is None:
                 continue
             # If a char somehow appears in both (shouldn't), prefer dead
             characters[cid] = _parse_character(
                 cid,
-                raw,
+                record,
                 is_dead=True,
                 memory_index=memory_index,
                 cultures_lookup=cultures_lookup,
@@ -1212,11 +1214,12 @@ def parse_save(data: dict[str, Any]) -> SaveSnapshot:
     if isinstance(dead_prunable, dict):
         for raw_id, raw in dead_prunable.items():
             cid = _coerce_int(raw_id)
-            if cid is None or not isinstance(raw, dict):
+            record = character_entry(raw)
+            if cid is None or record is None:
                 continue
             characters[cid] = _parse_character(
                 cid,
-                raw,
+                record,
                 is_dead=True,
                 memory_index=memory_index,
                 cultures_lookup=cultures_lookup,
