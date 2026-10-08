@@ -24,6 +24,7 @@ from collections import Counter
 from pathlib import Path
 
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from chronicler.db import Event, make_engine_for_path, make_session_factory
 from chronicler.db.engine import session_scope
@@ -31,6 +32,21 @@ from chronicler.save.baseline import load_baseline, save_baseline
 from chronicler.save.ingest import process_save_pair
 from chronicler.save.parse import parse_save
 from chronicler.save.rakaly import convert_save_to_json
+
+# SQLite caps bound parameters per statement (32766 on modern builds, 999 on
+# old ones), and a full year of world-wide diffs inserts more ids than that.
+_ID_CHUNK = 900
+
+
+def tally_event_types(session: Session, event_ids: list[int]) -> Counter[str]:
+    """Count ``event_type`` over ``event_ids``, querying in chunks so a large
+    unfiltered yearly diff does not exceed SQLite's bound-parameter limit."""
+    kinds: Counter[str] = Counter()
+    for start in range(0, len(event_ids), _ID_CHUNK):
+        chunk = event_ids[start : start + _ID_CHUNK]
+        rows = session.execute(select(Event.event_type).where(Event.id.in_(chunk))).all()
+        kinds.update(row[0] for row in rows)
+    return kinds
 
 
 def run_smoke_yearly(
@@ -93,8 +109,7 @@ def run_smoke_yearly(
     ]
     if inserted_ids:
         with session_scope(factory) as session:
-            rows = session.execute(select(Event.event_type).where(Event.id.in_(inserted_ids))).all()
-        kinds: Counter[str] = Counter(row[0] for row in rows)
+            kinds = tally_event_types(session, inserted_ids)
         print("by event_type:")
         for kind, n in sorted(kinds.items(), key=lambda kv: -kv[1]):
             print(f"  {n:6d}  {kind}")

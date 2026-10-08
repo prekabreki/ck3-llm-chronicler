@@ -148,7 +148,10 @@ def cmd_smoke_yearly(
     baseline: Path = typer.Option(  # noqa: B008
         ...,
         "--baseline",
-        help="Path to a persisted baseline snapshot (the .pkl under <data-dir>/baselines/).",
+        help=(
+            "Path to a persisted baseline snapshot "
+            "(<data-dir>/campaigns/<campaign-id>.baseline.json). Pass a copy."
+        ),
     ),
     save: Path = typer.Option(  # noqa: B008
         ...,

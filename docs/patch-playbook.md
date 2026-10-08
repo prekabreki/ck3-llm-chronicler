@@ -18,7 +18,8 @@ referencing the patch version so the next patch's playbook can avoid
 the same trap.
 
 `ck3_chronicler-8jz` tracks this playbook. Last reviewed against the
-1.19 → ? upgrade path.
+1.19 → 1.20 upgrade path (1.20.0.4, rakaly 0.8.21, 2026-10-08; see
+GitHub issue #8).
 
 ## 0. Triage signal
 
@@ -44,7 +45,8 @@ UI as a "Stale (CK3 patched)" pip on the Heraldry pipeline card with a
   print('OK', len(d), 'top-level keys')"
 ```
 
-Expected: a number near 60 ("OK 60 top-level keys") and no exception.
+Expected: a number near 80 ("OK 79 top-level keys" on 1.20.0.4; 1.19
+had 75) and no exception.
 
 If rakaly raises:
 
@@ -77,15 +79,31 @@ should now pass.
 ## 3. Yearly-diff smoke fixture
 
 ```bash
+cp <data-dir>/campaigns/<campaign-id>.baseline.json /tmp/baseline.json
+cp <data-dir>/campaigns/<campaign-id>.db            /tmp/smoke.db
 chronicler smoke-yearly \
-  --baseline <data-dir>/baselines/<campaign-id>.pkl \
+  --baseline /tmp/baseline.json \
   --save    <path-to-a-newer-yearly-autosave.ck3> \
-  --db      <data-dir>/campaigns/<campaign-id>.db \
+  --db      /tmp/smoke.db \
   --campaign-id <campaign-id>
 ```
 
-(The `<data-dir>` is `~/Documents/chronicler/` by default; override
-with `CHRONICLER_DATA_DIR`.)
+(The `<data-dir>` is `~/.local/share/chronicler/` on Linux and
+`~/Documents/chronicler/` on Windows/macOS; override with
+`CHRONICLER_DATA_DIR`.)
+
+The live baseline sits at the campaign's *latest* ingested save, so
+for a true year-apart diff build a baseline from an older save instead
+(`parse_save(convert_save_to_json(old))` → `save_baseline(path, snap)`)
+and point `--db` at a fresh DB made with
+`chronicler.db.migrate_runner.upgrade_to_head`. A fresh DB makes every
+event count as inserted, so the tally is complete.
+
+The smoke diffs **every character in the world**, not just the tracked
+set the live tailer filters to. A year on a 1066 start yields tens of
+thousands of events (1.20: 34,482 over 1066.10.2 → 1067.11.1, 32 event
+types) where the tailer records a few dozen. Judge an "explosion"
+against a prior *smoke* run, not against the campaign DB.
 
 Expected: an "ingested in N s" line followed by a `by event_type:`
 table. Watch for:
