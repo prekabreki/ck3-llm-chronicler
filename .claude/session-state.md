@@ -10,7 +10,7 @@ blocked_on:
     reason: needs the user to play a live campaign for the throughput measurement
 ---
 
-Audited every open issue against the scoping contract and re-checked them against a 1.20 save at 1067.11.1.
-9 is promoted to ready-for-agent (cheap tier) and is the next foreman dispatch.
-5 was un-deferred: 1.20 saves now populate barter_missions, but what its `barterer` ids point at is unknown, so it is a frontier investigation, not executor work.
-3, 4, 6 and 7 stay deferred; their gates were re-checked and are still closed.
+Fixed the bug that kept the dead King Harold #32638 (campaign 00f1e372) showing as alive with no biography, in 204f503, no issue filed.
+CK3 1.20 writes each dead_unprunable entry twice and rakaly groups them into lists, which the parser skipped.
+Not yet seen live: on the next autosave after a restart, Harold's death event should land and his biography should be queued.
+The earlier audit context still holds: 9 is the next foreman dispatch and 5 is a frontier investigation.
