@@ -44,7 +44,7 @@ export function DesktopShortcutCard(): React.JSX.Element {
             className="italic-fell paths-row__error"
             data-testid="desktop-shortcut-error"
           >
-            {String(mutation.error)}
+            {mutation.error.message}
           </p>
         )}
 
