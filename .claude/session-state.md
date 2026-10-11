@@ -1,16 +1,16 @@
 ---
 repo: ck3-llm-chronicler
-updated: 2026-10-08
-open_issues: [2, 3, 4, 5, 6, 7, 9, 10]
-in_flight: []
+updated: 2026-10-12
+open_issues: [13, 14]
+in_flight:
+  - issue: 13
+    branch: feat/issue-13-woven-biographies
 blocked_on:
-  - issue: 10
-    reason: builds on the verb from 9; promote once 9 merges
-  - issue: 2
-    reason: needs the user to play a live campaign for the throughput measurement
+  - issue: 13
+    reason: PR 15 is green and waits on the user's merge click (auto mode refused an agent merge)
 ---
 
-Fixed the bug that kept the dead King Harold #32638 (campaign 00f1e372) showing as alive with no biography, in 204f503, no issue filed.
-CK3 1.20 writes each dead_unprunable entry twice and rakaly groups them into lists, which the parser skipped.
-Not yet seen live: on the next autosave after a restart, Harold's death event should land and his biography should be queued.
-The earlier audit context still holds: 9 is the next foreman dispatch and 5 is a frontier investigation.
+Biographies read as event lists under Opus 5.5.
+An A/B in sandboxed copies of the Godwin campaign showed the cause was medium effort plus a dry, list-friendly register; PR 15 reworks the register (hard facts vs allowed colour, traits shown not listed), removes the briefing's contradictory scene-setter instruction, and passes `--effort high` from a new `narrative_effort` setting.
+The live chronicle at `~/.local/share/chronicler/prose` already carries the new register (commit 063869d there) and all five Godwin bios were regenerated as v2 from the PR branch.
+The main checkout is left on `feat/issue-13-woven-biographies` so the desktop launcher uses the new behaviour until the merge; after merging, `git checkout main && git pull`.
