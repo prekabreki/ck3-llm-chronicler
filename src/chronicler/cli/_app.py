@@ -28,6 +28,7 @@ Getting started:
   import-save <path>          backfill from an existing save
   auto-track                  follow the player and their family
   dev                         watch saves and serve the web app
+  launch                      start dev + CK3 + browser in one click
 
 Reading and serving:
 

@@ -7,7 +7,7 @@ now live in sibling modules that each attach to the shared root ``app``
     _shared.py   — campaign resolution, the latest-save resolve pipeline,
                    the per-campaign session contextmanager
     campaigns.py — the ``campaign`` sub-app (create / list / unarchive)
-    ingest.py    — tail / serve / dev / save-tail / import-save /
+    ingest.py    — tail / serve / dev / launch / save-tail / import-save /
                    auto-track / track / untrack
     inspect.py   — dump-character / dump-biography / regenerate-biography /
                    tracked / smoke-yearly

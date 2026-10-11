@@ -1,5 +1,5 @@
-"""Ingest + serve CLI verbs: tail / serve / dev / save-tail / import-save /
-auto-track / track / untrack.
+"""Ingest + serve CLI verbs: tail / serve / dev / launch / save-tail /
+import-save / auto-track / track / untrack.
 
 ck3_chronicler-64vp (audit L23): extracted from ``main.py``. The
 module-level ``make_narrative_provider`` / ``run_save_ingest`` / ``asyncio``
@@ -12,6 +12,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
+import subprocess
+import sys
+import time
+import urllib.request
+import webbrowser
+from contextlib import suppress
 from pathlib import Path
 
 import typer
@@ -23,7 +30,7 @@ from chronicler.cli._shared import (
     _resolve_campaign,
     _try_auto_resolve_campaign,
 )
-from chronicler.config import get_ck3_debug_log, get_ck3_save_dir
+from chronicler.config import chronicler_data_dir, get_ck3_debug_log, get_ck3_save_dir
 from chronicler.db.engine import session_scope
 from chronicler.db.registry import (
     Campaign,
@@ -288,6 +295,153 @@ def cmd_dev(
         ),
         provider,
     )
+
+
+CK3_STEAM_URL = "steam://rungameid/1158310"
+_PROBE_PATH = "/api/settings/provider-status"
+_POLL_TIMEOUT_SECONDS = 30.0
+_POLL_INTERVAL_SECONDS = 0.5
+
+
+def _launcher_log_path() -> Path:
+    """The launcher's own log, appended to by every ``launch`` run."""
+    return chronicler_data_dir() / "logs" / "launcher.log"
+
+
+def _report(log_file: Path, message: str, *, err: bool = False) -> None:
+    """Record a launcher message in the log and, when a console exists, echo it.
+
+    The shortcut may run the launcher with no console (``pythonw.exe`` sets
+    ``sys.stdout`` to ``None``), so the stream write is best-effort and the
+    log is authoritative. Never raises on a ``None`` or broken stream.
+    """
+    log_file.parent.mkdir(parents=True, exist_ok=True)
+    with open(log_file, "a", encoding="utf-8") as fh:
+        fh.write(message + "\n")
+    stream = sys.stderr if err else sys.stdout
+    if stream is not None:
+        with suppress(OSError, ValueError):
+            print(message, file=stream)
+
+
+def _server_is_running(url: str) -> bool:
+    """True when the chronicler's own SPA answers at ``url``.
+
+    Probes ``/api/settings/provider-status`` specifically: a 200 there proves
+    it is *this* app serving the port, not a foreign process that happens to
+    answer plain HTTP. Any other status, a refusal, or a timeout counts as
+    "not running".
+    """
+    probe_url = url.rstrip("/") + _PROBE_PATH
+    try:
+        with urllib.request.urlopen(probe_url, timeout=1.0) as resp:
+            return resp.getcode() == 200
+    except Exception:  # noqa: BLE001 — any failure means "not running"
+        return False
+
+
+def _spawn_dev(port: int, log_file: Path) -> subprocess.Popen:
+    """Spawn ``chronicler dev --port <port>`` fully detached.
+
+    Detached so the child survives this launcher exiting, and its stdout/
+    stderr are appended to the launcher log rather than inheriting the
+    launcher's (possibly absent) console. POSIX gets a new session; Windows
+    gets ``DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW``
+    so no console window ever flashes.
+    """
+    cmd = [sys.executable, "-m", "chronicler", "dev", "--port", str(port)]
+    kwargs: dict[str, object] = {"stdin": subprocess.DEVNULL}
+    if sys.platform == "win32":
+        kwargs["creationflags"] = (
+            subprocess.DETACHED_PROCESS
+            | subprocess.CREATE_NEW_PROCESS_GROUP
+            | subprocess.CREATE_NO_WINDOW
+        )
+    else:
+        kwargs["start_new_session"] = True
+    log_file.parent.mkdir(parents=True, exist_ok=True)
+    with open(log_file, "ab") as logf:
+        kwargs["stdout"] = logf
+        kwargs["stderr"] = logf
+        return subprocess.Popen(cmd, **kwargs)
+
+
+def _launch_game() -> None:
+    """Launch CK3 through Steam, without waiting for it (or the server)."""
+    if sys.platform == "win32":
+        os.startfile(CK3_STEAM_URL)  # type: ignore[attr-defined]
+    else:
+        subprocess.Popen(
+            ["xdg-open", CK3_STEAM_URL],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+
+def _open_browser(url: str) -> None:
+    """Open ``url`` in the user's default browser."""
+    webbrowser.open(url)
+
+
+def _wait_for_server(url: str, child: subprocess.Popen | None, log_file: Path) -> None:
+    """Poll ``url`` until the server answers, the child dies, or timeout passes.
+
+    Raises :class:`typer.Exit` non-zero on the two failure paths, with a
+    message that names the log path.
+    """
+    deadline = time.monotonic() + _POLL_TIMEOUT_SECONDS
+    while True:
+        if child is not None and child.poll() is not None:
+            _report(
+                log_file,
+                f"chronicler dev exited before the web app answered; see log: {log_file}",
+                err=True,
+            )
+            raise typer.Exit(code=1)
+        if _server_is_running(url):
+            return
+        if time.monotonic() >= deadline:
+            _report(
+                log_file,
+                f"timed out waiting for {url} to answer; see log: {log_file}",
+                err=True,
+            )
+            raise typer.Exit(code=1)
+        time.sleep(_POLL_INTERVAL_SECONDS)
+
+
+@app.command("launch")
+def cmd_launch(
+    port: int = typer.Option(8000, "--port", help="Port the web app should listen on."),
+    no_game: bool = typer.Option(False, "--no-game", help="Skip launching CK3 through Steam."),
+    no_browser: bool = typer.Option(False, "--no-browser", help="Skip opening the browser."),
+) -> None:
+    """Start chronicler dev detached, launch CK3, and open the web app.
+
+    The one-click start a desktop shortcut points at. If the web app is
+    already running on ``--port`` it is reused (no second server); otherwise
+    ``chronicler dev`` is spawned detached, CK3 is launched through Steam,
+    and the browser opens once the app answers. Log: ``<data dir>/logs/launcher.log``.
+    """
+    url = f"http://127.0.0.1:{port}/"
+    log_file = _launcher_log_path()
+
+    child: subprocess.Popen | None = None
+    if _server_is_running(url):
+        _report(log_file, f"chronicler already running at {url}; reusing it")
+    else:
+        _report(log_file, f"starting chronicler dev on port {port} (detached)")
+        child = _spawn_dev(port, log_file)
+
+    if not no_game:
+        _launch_game()
+
+    _wait_for_server(url, child, log_file)
+
+    if not no_browser:
+        _open_browser(url)
+    _report(log_file, f"chronicler is up at {url}")
 
 
 @app.command("save-tail")
