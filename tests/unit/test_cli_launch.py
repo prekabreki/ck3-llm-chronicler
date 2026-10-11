@@ -127,7 +127,11 @@ def test_spawn_dev_detaches_and_redirects_to_log(
 
     assert captured["cmd"] == [sys.executable, "-m", "chronicler", "dev", "--port", "8000"]
     kwargs = captured["kwargs"]
-    assert kwargs["start_new_session"] is True
+    if sys.platform == "win32":
+        assert "creationflags" in kwargs
+        assert "start_new_session" not in kwargs
+    else:
+        assert kwargs["start_new_session"] is True
     assert kwargs["stdin"] is subprocess.DEVNULL
     assert kwargs["stdout"].name == str(log_file)
     assert kwargs["stderr"].name == str(log_file)
@@ -197,7 +201,10 @@ def test_launch_fresh_start_spawns_then_opens(
     result = runner.invoke(app, ["launch", "--port", "9000"])
     assert result.exit_code == 0, result.output
     assert popen_cmds[0] == [sys.executable, "-m", "chronicler", "dev", "--port", "9000"]
-    assert popen_kwargs["start_new_session"] is True
+    if sys.platform == "win32":
+        assert "creationflags" in popen_kwargs
+    else:
+        assert popen_kwargs["start_new_session"] is True
     assert game_calls == [True]
     assert browser_calls == ["http://127.0.0.1:9000/"]
 
