@@ -62,11 +62,16 @@ def test_launch_listed_in_root_help(runner: CliRunner) -> None:
     assert "start dev + CK3 + browser in one click" in result.stdout
 
 
-def test_launch_help_lists_flags(runner: CliRunner) -> None:
-    result = runner.invoke(app, ["launch", "--help"])
-    assert result.exit_code == 0
-    for flag in ("--port", "--no-game", "--no-browser"):
-        assert flag in result.output
+def test_launch_help_lists_flags() -> None:
+    """The declared params are the contract ``--help`` is generated from; parse
+    them rather than the rendered text, which rich interleaves with ANSI colour
+    codes under forced colour (ck3_chronicler-27ov.16)."""
+    import typer
+
+    launch = typer.main.get_command(app).commands["launch"]
+    declared = {opt for param in launch.params for opt in param.opts}
+    for required in ("--port", "--no-game", "--no-browser"):
+        assert required in declared, f"launch must declare {required}; got {sorted(declared)}"
 
 
 def test_launcher_log_path_under_data_dir(env: Path) -> None:
