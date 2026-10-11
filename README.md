@@ -9,7 +9,8 @@ Chronicler reads the save files instead. Every autosave is melted to JSON, diffe
 the previous one, and the resulting events land in a SQLite database per campaign. When a
 character you track dies, their whole recorded life goes to an LLM as a briefing and comes
 back as a biography, written into a git repo you own. The craft rules are strict about
-invention: if a fact is not in the briefing, the sentence does not get written.
+invention: the people, deeds, titles and deaths all come from the briefing. The weather on
+the road and the mood of the hall are the chronicler's.
 
 What that leaves after a long campaign is a folder of markdown that reads like a dynasty's
 record of itself, plus a local web app to read it in. There is a codex per campaign, family
@@ -181,7 +182,7 @@ The wire format and per-event-type schema are documented in
 
 [CONTRIBUTING.md](CONTRIBUTING.md) has the setup, the exact gates CI runs on both Ubuntu and
 Windows, how issues and dependencies are declared, and the one rule that outranks the rest:
-the craft rules forbid invention. [docs/README.md](docs/README.md) indexes the rest.
+the craft rules forbid inventing facts. [docs/README.md](docs/README.md) indexes the rest.
 [CLAUDE.md](CLAUDE.md) and [AGENTS.md](AGENTS.md) carry the same conventions for coding
 agents.
 

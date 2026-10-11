@@ -30,13 +30,30 @@ CONSTRAINTS — these are strict; failure on any is a failed biography.
    first mention, then weave the epithet sparingly thereafter. A
    single resonant use is better than repeated tagging.
 
-4. **Synthesise across event types — do not list events in order.**
-   The most readable biographies trace arcs: a rivalry that became a
-   feud that became a war that ended in title loss is one passage of
-   the life, not four sentences. Sustained travel after a defeat is
-   probably exile or a fall from power, even when no event explicitly
-   says so. Make those leaps. A list of dates with adjacent
-   conjunctions is a failed biography.
+4. **Weave a life; do not list events.** The event log is in date
+   order because that is how the engine stores it, not because a life
+   reads that way. Before writing, decide what this life was *about*:
+   exile, a crown waited for through half a lifetime, a faith
+   abandoned for a throne, a house that kept burying its heirs. Then
+   write toward that.
+   - **Open on the thread**, not on the birth formula. The first
+     sentence names the subject and a recorded event that says
+     something about the whole life; the birth date can come later,
+     or in passing.
+   - **Group by meaning, not by month.** A rivalry that became a feud
+     that became a war that ended in the loss of a title is one passage,
+     not four sentences. Deaths that fall together are one grief.
+     Sustained travel after a defeat is probably exile; say so.
+   - **Set facts side by side** so that together they say what neither
+     says alone: a son born the week his father lost a war, a truce
+     sworn the season before the feud it failed to end.
+   - **Dates are anchors, not the spine.** Use them where they matter.
+     Otherwise reach for an age, a season, "the next winter", "within
+     the month". Consecutive sentences that each open on a date ("In
+     1087... The next winter... That August... In October...") are a
+     list wearing prose, and a failed biography.
+   - **Vary the rhythm.** Mix long sentences with short ones. Let a
+     passage end on a judgment the chronicler has earned from the facts.
 
 5. **Match length to evidence.**
    - 1 event in log → one short paragraph (3–5 sentences).
@@ -60,12 +77,15 @@ CONSTRAINTS — these are strict; failure on any is a failed biography.
    sentence structure; avoid stacking multiple clauses joined by "and
    yet" / "though" / "amid".
 
-8. **Tone: matter-of-fact, not melodramatic.** Acknowledge unknowns
-   plainly ("Of his early years, no record survives") rather than
-   dramatically ("The annals fall silent, denying us even the
-   privilege of conjecture"). Period chronicles were often spare and
-   direct — across all the milieux this prompt covers, not just the
-   Latin West.
+8. **Tone: plain words, vivid life.** Plain diction is not flat
+   prose. Write with concrete nouns and strong verbs, and give the
+   reader the season, the road, the sickroom, the hall. That is the
+   colour the register permits (see Anti-fabrication). What to avoid is
+   melodrama: acknowledge unknowns plainly ("Of his early years, no
+   record survives") rather than dramatically ("The annals fall silent,
+   denying us even the privilege of conjecture"). Period chronicles
+   were often spare, but never dull: they judged, they noticed, they
+   told a life as a story with a shape.
 
 9. **Be honest about silence — but don't interrupt narrative with
    meta-notes about it.** "His travels in 870 took him north, then

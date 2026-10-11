@@ -30,13 +30,19 @@ Do not, in this repository:
 
 ## Anti-fabrication (the most important rule)
 
-Every fact in your biography must trace to the briefing. If a fact is not in the events list, the character snapshot, or the region summary, it does not appear in the biography.
+The briefing is the record. The bones of the life come only from it, and the bones are what a reader will check against the save.
 
-If you would need to invent a detail to make a sentence work, omit the sentence. Better to write a short, true biography than a long, embellished one. CK3 is a generative system; the briefing's facts ARE the lived reality.
+**Hard facts must trace to the briefing.** Named people, places, realms, titles, battles, wars, children, marriages, causes of death, outcomes, dates and numbers: if the briefing does not give it, it does not appear. If the record does not say where he fought, name no place. If it does not name the killer, name no one. A sentence that needs a new hard fact to work is cut.
 
-You may **interpret** facts: motive, mood, the weight of a defeat, the texture of a place. Interpretation is the chronicler's craft. You may **not** invent: an unrecorded battle, a quoted line of speech, a named child the briefing never mentions, a journey to a place that doesn't appear in the events.
+**Colour is allowed, and expected.** These are medieval biographies. A medieval chronicler filled the space between recorded deeds with the season, the weather on the road, a gesture, the mood of a hall, what a grieving household would have done, what a man must have felt. Write that texture freely, on three conditions:
 
-When a fact in the briefing is ambiguous, prefer the cautious reading. When an event has only a date and a type, write only what that affords.
+- it adds nothing a reader could check against the save and find false: no new named person, place, deed or outcome;
+- it does not contradict anything in the briefing;
+- it dresses a recorded fact rather than standing in for one.
+
+Motive and feeling are interpretation, and interpretation is the chronicler's craft. Write it with a chronicler's confidence ("the road suited her") or a chronicler's hedge ("it may be that he went for his soul's sake") as the moment wants. Do not invent quoted speech.
+
+When the briefing is ambiguous on a hard fact, take the cautious reading.
 
 ## Opening rule and peer-mention rule (the 1p50 rule)
 
@@ -48,9 +54,18 @@ This rule exists because the upstream LLM iterations kept opening with worldbuil
 
 ## Trait changes are bookkeeping, not life events
 
-Trait gains and losses (`TraitGainedEvent` / `TraitLostEvent` in the briefing's event log) record character development but should rarely anchor a narrative beat on their own. Fold related trait changes into the life-arc passage they belong to: a cluster of physical disabilities gained during one epidemic is **one** beat about suffering through that period, not six sentences naming each impairment. A childhood personality drift ("lost Charming, gained Lustful") is rarely worth a sentence — weight prose toward what the character *did*, not how their stat sheet looked.
+Trait gains and losses in the event log are the engine's accounting of a person, not things that happened to them. **Never list traits.** These sentences are failures, because they read the stat sheet aloud:
 
-A single rare or dramatic trait event may anchor a beat when it correlates with a recorded turning point in the briefing — the Possessed trait after a vision, Disfigured after a duel loss. The test: would a chronicler reaching for parchment have considered this trait change a remembered event of the life, or only the engine's accounting of it?
+> by his tenth year he had already turned callous, but afterwards he grew honest and diligent as well.
+> The bossiness of his childhood was gone by then.
+
+A trait is evidence about who someone was. Use it in one of three ways, or not at all:
+
+- **Show it in a deed.** A callous boy is seen in how he takes a death in the household; a diligent one in the work he finishes. Tie it to a recorded event, and let the reader name the trait.
+- **Let it colour how an event is told.** A brave man's battle and a craven man's battle are written differently, even when the record of each is one line.
+- **Give it as what people said of them**, once, tied to a moment, the way a chronicle records a reputation.
+
+Fold related trait changes into the passage they belong to: a cluster of impairments from one epidemic is **one** beat about suffering through it, not six sentences naming each. A trait that cannot be shown or tied to anything is left out. A single rare or dramatic trait event may anchor a beat when it lines up with a recorded turning point (Possessed after a vision, Disfigured after a lost duel). The test: would a chronicler reaching for parchment have remembered this as an event of the life, or is it only the engine's accounting?
 
 ## Naming discipline
 

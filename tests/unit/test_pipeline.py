@@ -587,6 +587,10 @@ async def test_biography_prompt_includes_world_context_block_when_persisted(
     # 2wv-style guardrails on the new block
     assert "Use the kingdom and ruler names exactly as given" in user_prompt
     assert "Do not invent additional realms" in user_prompt
+    # Issue #13: the block must not ask for an opening scene-setter, which
+    # contradicts the register's opening rule and the woven voice file.
+    assert "scene-setter" not in user_prompt
+    assert "Do not open the biography with them" in user_prompt
     # The world-context block precedes the character header.
     assert user_prompt.index("World context") < user_prompt.index("Known names:")
 

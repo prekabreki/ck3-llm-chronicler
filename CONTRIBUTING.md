@@ -94,11 +94,16 @@ and stages it, or run `python tools/memory-index.py` yourself.
 
 ## The rule that outranks the rest
 
-**The craft rules forbid invention.** If a fact is not in the briefing, the sentence does not
-get written. When you touch prompt assembly, briefing construction, or anything that feeds the
-model, assume a reader will check the output against their save file. A plausible detail the
-data does not support is the one unforgivable bug in this codebase, because it quietly turns a
+**The craft rules forbid inventing facts.** Every hard fact in a biography (a named person,
+place, realm, title, battle, child, marriage, cause of death, outcome, date or number) must come
+from the briefing. When you touch prompt assembly, briefing construction, or anything that feeds
+the model, assume a reader will check the output against their save file. A hard fact the data
+does not support is the one unforgivable bug in this codebase, because it quietly turns a
 chronicle of what happened into fiction.
+
+Colour is a different matter. The register lets the model supply medieval texture (the season,
+the road, a gesture, the mood of a hall) as long as it adds nothing a reader could check and
+find false.
 
 ## Style
 

@@ -64,7 +64,8 @@ machines — nothing in the chronicler depends on it either way.
 Worth knowing before you change `CLAUDE.md`:
 
 - The anti-fabrication rule is what keeps biographies traceable to the briefing.
-  Loosening it produces better-sounding prose about events that never happened.
+  It separates hard facts (never invented) from colour (allowed). Moving that line
+  toward hard facts produces better-sounding prose about events that never happened.
 - The opening rule and peer-mention rule exist because models reliably drift into
   worldbuilding preambles that name characters who never recur.
 - The forbidden-registers list is about phrasing, not interpretation. It is the
