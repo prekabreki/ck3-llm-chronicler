@@ -29,19 +29,21 @@ export function DesktopShortcutCard(): React.JSX.Element {
         </p>
       </div>
       <div className="settings-card__body">
-        <button
-          type="button"
-          className="btn btn--primary"
-          disabled={mutation.isPending}
-          onClick={() => mutation.mutate()}
-          data-testid="desktop-shortcut-button"
-        >
-          {mutation.isPending ? 'Creating…' : 'Create Desktop shortcut for Chronicler'}
-        </button>
+        <div className="desktop-shortcut__actions">
+          <button
+            type="button"
+            className="btn btn--primary"
+            disabled={mutation.isPending}
+            onClick={() => mutation.mutate()}
+            data-testid="desktop-shortcut-button"
+          >
+            {mutation.isPending ? 'Creating…' : 'Create Desktop shortcut for Chronicler'}
+          </button>
+        </div>
 
         {mutation.isError && (
           <p
-            className="italic-fell paths-row__error"
+            className="italic-fell desktop-shortcut__error"
             data-testid="desktop-shortcut-error"
           >
             {mutation.error.message}
@@ -49,7 +51,10 @@ export function DesktopShortcutCard(): React.JSX.Element {
         )}
 
         {mutation.isSuccess && (
-          <p className="italic-fell" data-testid="desktop-shortcut-result">
+          <p
+            className="italic-fell desktop-shortcut__status"
+            data-testid="desktop-shortcut-result"
+          >
             Shortcut created at <code>{mutation.data.path}</code> (
             {mutation.data.platform}).
           </p>
