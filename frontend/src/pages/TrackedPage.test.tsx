@@ -23,6 +23,7 @@ const TRACKED: TrackedResponse[] = [
     paused_at: null,
     bumped_at: null,
     coa_json: null,
+    death_date: null,
   },
   {
     character_id: 150,
@@ -35,6 +36,7 @@ const TRACKED: TrackedResponse[] = [
     paused_at: null,
     bumped_at: null,
     coa_json: null,
+    death_date: null,
   },
 ];
 
@@ -83,6 +85,30 @@ describe('TrackedPage', () => {
 
     expect(useAppStore.getState().selectedCharacterId).toBe(100);
     expect(useAppStore.getState().view).toBe('chronicle');
+  });
+
+  it('marks a dead soul with no vita as Departed and offers to write it', async () => {
+    const departed: TrackedResponse = {
+      ...TRACKED[1]!,
+      character_id: 160,
+      first_name: 'Alcuin',
+      role: 'child',
+      death_date: '1088.8.3',
+    };
+    vi.spyOn(client, 'listTracked').mockResolvedValue([departed]);
+    const writeSpy = vi
+      .spyOn(client, 'regenerateBiography')
+      .mockResolvedValue({ character_id: 160, item_id: 1 });
+    renderWithClient(<TrackedPage campaignName="Wessex" />);
+    await waitFor(() => screen.getByText('Alcuin'));
+
+    expect(screen.getByText('Departed')).toBeInTheDocument();
+    expect(screen.queryByText('Tracking')).not.toBeInTheDocument();
+    expect(screen.getByText('Child')).toBeInTheDocument();
+    expect(screen.queryByText('By hand')).not.toBeInTheDocument();
+
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Write vita' }));
+    expect(writeSpy).toHaveBeenCalledWith('Wessex', 160);
   });
 
   it('shows a friendly empty state when nothing is tracked', async () => {

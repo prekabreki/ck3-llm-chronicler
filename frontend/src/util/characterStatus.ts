@@ -14,15 +14,17 @@ import type { NarrativeQueueResponse } from '../api/types';
 export type ChipState = 'live' | 'queued' | 'drafted' | 'paused';
 
 // The full per-character status: chip-worthy states plus "tracking"
-// (tracked, nothing else going on — the resting state).
-export type CharacterStatus = ChipState | 'tracking';
+// (tracked, nothing else going on — the resting state) and "departed"
+// (dead with no vita yet — a biography owed, not a resting state).
+export type CharacterStatus = ChipState | 'departed' | 'tracking';
 
 export interface TrackedChipInputs {
   paused_at: string | null;
   biography_count: number;
+  death_date?: string | null;
 }
 
-// Priority: live > queued > paused > drafted > tracking > null. "live"
+// Priority: live > queued > paused > drafted > departed > tracking > null. "live"
 // wins over "paused" because live mid-flight means the user just
 // unpaused or the task started before pause landed; we want the user
 // to see what's actually running. Returns null only for an untracked
@@ -46,16 +48,17 @@ export function deriveCharacterStatus(
   }
   if (tracked?.paused_at) return 'paused';
   if (tracked && tracked.biography_count > 0) return 'drafted';
+  if (tracked?.death_date) return 'departed';
   return tracked ? 'tracking' : null;
 }
 
-// Chip-level view of the status: "tracking" isn't worth a chip (the
-// row itself already conveys it), so it maps to null.
+// Chip-level view of the status: "tracking" and "departed" aren't worth
+// a chip (the row and the lifespan already convey them), so they map to null.
 export function pickChipState(
   characterId: number,
   queue: NarrativeQueueResponse | undefined,
   tracked: TrackedChipInputs | null,
 ): ChipState | null {
   const status = deriveCharacterStatus(characterId, queue, tracked);
-  return status === 'tracking' ? null : status;
+  return status === 'tracking' || status === 'departed' ? null : status;
 }

@@ -18,7 +18,7 @@ const CHARS: CharacterSummary[] = [
 ];
 
 const TRACKED: TrackedResponse[] = [
-  { character_id: 100, first_name: 'Alfred', nickname: null, role: 'player', added_at: '2026-04-15T08:00:00+00:00', biography_count: 1, monthly_token_spend: 0, paused_at: null, bumped_at: null, coa_json: null },
+  { character_id: 100, first_name: 'Alfred', nickname: null, role: 'player', added_at: '2026-04-15T08:00:00+00:00', biography_count: 1, monthly_token_spend: 0, paused_at: null, bumped_at: null, coa_json: null, death_date: null },
 ];
 
 const ALFRED_DETAIL: CharacterDetail = {

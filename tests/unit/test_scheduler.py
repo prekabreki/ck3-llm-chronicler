@@ -57,20 +57,38 @@ async def test_schedule_creates_biography_row(factory) -> None:
 
 
 @pytest.mark.asyncio
+async def test_schedule_from_worker_thread_runs_on_owning_loop(factory) -> None:
+    """The save-tail runs _advance_baseline under asyncio.to_thread, so a
+    death's schedule() arrives on a worker thread with no running loop.
+    It must still hand the biography to the loop the scheduler lives on;
+    it used to be skipped silently and no live death ever got one."""
+    with factory() as s:
+        upsert_character(s, ck3_id=1234)
+        s.commit()
+    provider = CountingProvider()
+    scheduler = BiographyScheduler(factory, provider)
+
+    await asyncio.to_thread(scheduler.schedule, 1234)
+    await asyncio.sleep(0)  # let the threadsafe callback spawn the task
+    await scheduler.drain()
+
+    assert provider.calls == [1234]
+
+
+@pytest.mark.asyncio
 async def test_schedule_outside_event_loop_is_noop(factory) -> None:
     """Calling schedule from a sync context with no running loop must not
     crash — process_lines (the test helper) doesn't run async."""
     provider = CountingProvider()
-    scheduler = BiographyScheduler(factory, provider)
-    # Note: NOT inside @pytest.mark.asyncio's loop — but since we ARE in
-    # one (decorator on the function), use asyncio.get_event_loop().stop()
-    # workaround. Simpler: test by patching out the loop check.
+    # Patch out the loop check for construction too, so the scheduler
+    # has no owning loop to hand the call back to.
     import unittest.mock
 
     with unittest.mock.patch(
         "chronicler.narrative.scheduler.asyncio.get_running_loop",
         side_effect=RuntimeError("no running event loop"),
     ):
+        scheduler = BiographyScheduler(factory, provider)
         scheduler.schedule(1234)  # should not raise
 
     # No tasks were created

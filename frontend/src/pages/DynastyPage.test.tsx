@@ -166,6 +166,7 @@ describe('DynastyPage', () => {
         paused_at: null,
         bumped_at: null,
         coa_json: null,
+        death_date: null,
       },
     ]);
     const { container } = renderWithClient(<DynastyPage campaignName="Wessex" />);

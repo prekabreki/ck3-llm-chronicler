@@ -145,6 +145,16 @@ class NarrativeScheduler:
         # narrative_* frames to the AppShell activity strip. None keeps
         # the back-compat path for tests + the standalone CLI.
         self._queue_state = queue_state
+        # The loop biography tasks run on. The save-tail calls schedule()
+        # from an asyncio.to_thread worker (_advance_baseline), where no
+        # loop is running, so the call is handed back here threadsafe.
+        # Captured now when constructed on the loop, else on the first
+        # call that arrives on one (the API builds schedulers in a sync
+        # dependency, i.e. in the threadpool).
+        try:
+            self._loop: asyncio.AbstractEventLoop | None = asyncio.get_running_loop()
+        except RuntimeError:
+            self._loop = None
 
     @property
     def factory(self) -> _SessionFactory:
@@ -166,9 +176,10 @@ class NarrativeScheduler:
     def schedule(self, character_id: int) -> None:
         """Fire-and-forget biography generation for ``character_id``.
 
-        Skipped (silently) if:
+        Safe to call from a worker thread: the task is handed to the
+        scheduler's own loop. Skipped (silently) if:
         - the character isn't on the tracked list, or
-        - we're not running on an asyncio event loop (test contexts).
+        - no event loop is known at all (test contexts).
         """
         if not self._is_tracked(character_id):
             log.debug(
@@ -252,8 +263,15 @@ class NarrativeScheduler:
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
+            owner = self._loop
+            if owner is not None and owner.is_running():
+                owner.call_soon_threadsafe(
+                    lambda: self._enqueue_and_spawn(character_id, caller=caller)
+                )
+                return None
             log.debug("%s called outside an event loop; skipping", caller)
             return None
+        self._loop = loop
         # Enqueue *before* spawning so the AppShell strip sees a "queued"
         # event the moment the user's death lands, even while the task
         # is still waiting on the semaphore.

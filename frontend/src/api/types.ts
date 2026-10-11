@@ -167,6 +167,7 @@ export interface TrackedResponse {
   // ck3_chronicler-4y0v (slice 1, 2026-05-08): persisted CoA so the
   // TrackedPage shield matches the chronicle folio.
   coa_json: CoaDefinition | null;
+  death_date: string | null;
 }
 
 export interface BiographyResponse {

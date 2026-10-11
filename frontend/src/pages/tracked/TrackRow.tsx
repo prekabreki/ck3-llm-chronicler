@@ -11,6 +11,7 @@ import { UntrackButton } from '../../components/UntrackButton';
 import {
   useBumpTracked,
   usePauseTracked,
+  useRegenerateBiography,
   useResumeTracked,
 } from '../../api/queries';
 import { useAppStore } from '../../store/appStore';
@@ -26,7 +27,10 @@ const ROLE_BADGE: Record<
   player: { label: 'Player', cls: 'tracked-badge--player' },
   spouse: { label: 'Spouse', cls: 'tracked-badge--spouse' },
   heir: { label: 'Heir', cls: 'tracked-badge--heir' },
+  child: { label: 'Child', cls: 'tracked-badge--family' },
+  grandchild: { label: 'Grandchild', cls: 'tracked-badge--family' },
   family: { label: 'Family', cls: 'tracked-badge--family' },
+  vassal: { label: 'Vassal', cls: 'tracked-badge--manual' },
   manual: { label: 'By hand', cls: 'tracked-badge--manual' },
 };
 
@@ -45,6 +49,7 @@ const ROW_VIEW: Record<
   queued: { state: 'warn', label: 'In queue', progressPct: 60 },
   paused: { state: 'muted', label: 'Paused', progressPct: 0 },
   drafted: { state: 'good', label: 'Bio drafted', progressPct: 100 },
+  departed: { state: 'muted', label: 'Departed', progressPct: 5 },
   tracking: { state: 'live', label: 'Tracking', progressPct: 5 },
 };
 
@@ -161,7 +166,22 @@ function ContextualActions({
   const pauseMu = usePauseTracked(campaignName);
   const resumeMu = useResumeTracked(campaignName);
   const bumpMu = useBumpTracked(campaignName);
+  const writeMu = useRegenerateBiography(campaignName);
 
+  if (status === 'departed') {
+    // Dead with no vita: the death-time schedule was missed (or failed).
+    // Offer the write directly rather than a Pause that guards nothing.
+    return (
+      <button
+        type="button"
+        className="btn btn--quiet"
+        onClick={() => writeMu.mutate(t.character_id)}
+        disabled={writeMu.isPending || writeMu.isSuccess}
+      >
+        {writeMu.isPending ? 'Queuing…' : 'Write vita'}
+      </button>
+    );
+  }
   if (status === 'paused') {
     // ck3_chronicler-qk84: paused rows offer both Resume (clears
     // paused_at only) and Bump (resume + bumped_at priority for the

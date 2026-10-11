@@ -91,6 +91,9 @@ class TrackedResponse(BaseModel):
     # TrackedPage shield matches the chronicle folio. Same payload-cost
     # tradeoff as on CharacterSummary; tracked sets are small (~30).
     coa_json: dict[str, Any] | None = None
+    # Lets the Tracked page tell the dead from the living; a departed
+    # soul with no vita is a missed biography, not a resting one.
+    death_date: str | None = None
 
 
 class AddTrackedRequest(BaseModel):
@@ -221,6 +224,7 @@ def list_tracked(
                 character_id=r.character_id,
                 first_name=char.first_name if char else None,
                 nickname=char.nickname if char else None,
+                death_date=char.death_date if char else None,
                 role=r.role,
                 added_at=r.added_at,
                 biography_count=stats.get("biography_count", 0),
@@ -272,6 +276,7 @@ def _build_one_response(
         character_id=character_id,
         first_name=char.first_name if char else None,
         nickname=char.nickname if char else None,
+        death_date=char.death_date if char else None,
         role=row.role,
         added_at=row.added_at,
         biography_count=stats.get("biography_count", 0),
