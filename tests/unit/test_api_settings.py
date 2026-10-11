@@ -857,3 +857,57 @@ def test_app_boots_when_the_heraldry_dir_cannot_be_created(
     client = api.client()
     assert client.get("/api/campaigns").status_code == 200
     assert client.get("/api/heraldry/assets/palette.json").status_code == 404
+
+
+# --- issue #10: desktop-shortcut endpoint ---
+
+
+def test_desktop_shortcut_post_returns_path_and_platform(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A successful create returns {path, platform} from the shortcut module."""
+    from chronicler.desktop_shortcut import DesktopShortcutResult
+
+    monkeypatch.setattr(
+        "chronicler.desktop_shortcut.create_desktop_shortcut",
+        lambda: DesktopShortcutResult(
+            path="/home/u/Desktop/ck3-chronicler.desktop", platform="linux"
+        ),
+    )
+    resp = client.post("/api/settings/desktop-shortcut")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["path"] == "/home/u/Desktop/ck3-chronicler.desktop"
+    assert body["platform"] == "linux"
+
+
+def test_desktop_shortcut_post_501_on_unsupported_platform(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """macOS (unsupported) comes back 501 with a readable message."""
+    from chronicler.desktop_shortcut import UnsupportedPlatformError
+
+    def _raise() -> None:
+        raise UnsupportedPlatformError(
+            "desktop shortcuts are not supported on 'darwin' (Windows and Linux only)"
+        )
+
+    monkeypatch.setattr("chronicler.desktop_shortcut.create_desktop_shortcut", _raise)
+    resp = client.post("/api/settings/desktop-shortcut")
+    assert resp.status_code == 501
+    assert "not supported" in resp.json()["detail"]
+
+
+def test_desktop_shortcut_post_409_when_no_ck3_install(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No CK3 install for the icon → 409 with a message naming the fix."""
+    from chronicler.desktop_shortcut import NoCk3InstallError
+
+    def _raise() -> None:
+        raise NoCk3InstallError("no CK3 install found — set the CK3 install directory")
+
+    monkeypatch.setattr("chronicler.desktop_shortcut.create_desktop_shortcut", _raise)
+    resp = client.post("/api/settings/desktop-shortcut")
+    assert resp.status_code == 409
+    assert "CK3 install" in resp.json()["detail"]

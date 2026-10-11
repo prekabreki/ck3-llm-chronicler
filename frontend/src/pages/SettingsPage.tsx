@@ -21,6 +21,7 @@ import { useAppStore } from '../store/appStore';
 import { CostDashboard } from './settings/CostDashboard';
 import { DebugLogPanel } from './settings/DebugLogPanel';
 import { BackendCard } from './settings/BackendCard';
+import { DesktopShortcutCard } from './settings/DesktopShortcutCard';
 import { HeraldryPipelineCard } from './settings/HeraldryCard';
 import { LLMEngineCard } from './settings/LLMEngineCard';
 import { PathsCard } from './settings/PathsCard';
@@ -54,6 +55,7 @@ export function SettingsPage(): React.JSX.Element {
           <div className="settings-stack">
             <PathsCard />
             <HeraldryPipelineCard />
+            <DesktopShortcutCard />
             <SettingsCard
               id="provider"
               title="Provider & LLM"

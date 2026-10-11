@@ -994,3 +994,48 @@ describe('SettingsPage prose repo initialize', () => {
     expect(sub).not.toHaveTextContent('ClaudeCodeProvider');
   });
 });
+
+// --- issue #10: desktop-shortcut card ---
+
+describe('SettingsPage desktop shortcut card', () => {
+  beforeEach(() => {
+    vi.spyOn(client, 'getProviderStatus').mockResolvedValue(STATUS);
+    vi.spyOn(client, 'getCostSummary').mockResolvedValue(COST);
+  });
+
+  it('shows the created path and platform on success', async () => {
+    vi.spyOn(client, 'createDesktopShortcut').mockResolvedValue({
+      path: 'C:/Users/test/Desktop/CK3 Chronicler.lnk',
+      platform: 'windows',
+    });
+
+    renderWithClient(<SettingsPage />);
+    const user = userEvent.setup();
+
+    const button = await screen.findByTestId('desktop-shortcut-button');
+    expect(button).toHaveTextContent('Create Desktop shortcut for Chronicler');
+    await user.click(button);
+
+    const result = await screen.findByTestId('desktop-shortcut-result');
+    expect(result).toHaveTextContent('C:/Users/test/Desktop/CK3 Chronicler.lnk');
+    expect(result).toHaveTextContent('windows');
+  });
+
+  it('surfaces the server message on error', async () => {
+    vi.spyOn(client, 'createDesktopShortcut').mockRejectedValue(
+      new Error('no CK3 install found — set the CK3 install directory in Settings'),
+    );
+
+    renderWithClient(<SettingsPage />);
+    const user = userEvent.setup();
+
+    const button = await screen.findByTestId('desktop-shortcut-button');
+    await user.click(button);
+
+    const err = await screen.findByTestId('desktop-shortcut-error');
+    expect(err).toHaveTextContent(/no CK3 install found/);
+    // The button is back to its resting label, not stuck "Creating…".
+    expect(button).not.toBeDisabled();
+    expect(screen.queryByTestId('desktop-shortcut-result')).toBeNull();
+  });
+});

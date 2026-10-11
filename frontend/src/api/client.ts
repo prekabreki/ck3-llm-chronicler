@@ -24,6 +24,7 @@ import type {
   CostSummaryResponse,
   DebugLogRotateResponse,
   DebugLogStatusResponse,
+  DesktopShortcutResponse,
   DynastyResponse,
   EndSessionResponse,
   FamilyTreeResponse,
@@ -606,6 +607,13 @@ export function getFirstRunStatus(): Promise<FirstRunStatus> {
 
 export function dismissFirstRunWizard(): Promise<{ wizard_dismissed_at: string }> {
   return fetchJson('/api/settings/first-run/dismiss', { method: 'POST' });
+}
+
+// Issue #10: create the platform's desktop shortcut (runs `chronicler
+// launch`). 200 with {path, platform}; 501 unsupported platform, 409 no
+// CK3 install for the icon — both surface as ApiError with a readable detail.
+export function createDesktopShortcut(): Promise<DesktopShortcutResponse> {
+  return fetchJson('/api/settings/desktop-shortcut', { method: 'POST' });
 }
 
 export function getCostSummary(
