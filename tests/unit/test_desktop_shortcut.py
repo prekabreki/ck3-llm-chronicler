@@ -9,6 +9,7 @@ or touches a real Desktop.
 from __future__ import annotations
 
 import base64
+import os
 import subprocess
 import sys
 from pathlib import Path, PureWindowsPath
@@ -74,8 +75,10 @@ def test_linux_writes_desktop_file_with_correct_contents(
     # Same file lands in the applications dir, honouring XDG_DATA_HOME.
     assert (apps_dir / "ck3-chronicler.desktop").read_text(encoding="utf-8") == content
 
-    # Executable, and gio-set-trusted was called on the Desktop copy.
-    assert desktop_file.stat().st_mode & 0o777 == 0o755
+    # Executable (POSIX only — Windows has no exec bit), and
+    # gio-set-trusted was called on the Desktop copy.
+    if os.name != "nt":
+        assert desktop_file.stat().st_mode & 0o777 == 0o755
     assert gio_calls == [desktop_file]
 
 
