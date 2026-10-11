@@ -40,6 +40,7 @@ export function SettingsCard({
 const SETTINGS_NAV: { id: string; label: string }[] = [
   { id: 'paths', label: 'Paths & saves' },
   { id: 'heraldry', label: 'Heraldry pipeline' },
+  { id: 'desktop-shortcut', label: 'Desktop shortcut' },
   { id: 'provider', label: 'Provider & LLM' },
   { id: 'cost', label: 'Cost guardrail' },
   { id: 'migrations', label: 'Migrations' },

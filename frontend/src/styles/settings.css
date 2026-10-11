@@ -131,6 +131,31 @@
   padding: 12px 0;
 }
 
+/* Issue #10: desktop-shortcut card — compact (content-width) action like
+   the heraldry card's RUN EXTRACT, and status text sized like the other
+   cards' status lines rather than a full-width heading. */
+.desktop-shortcut__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.desktop-shortcut__status,
+.desktop-shortcut__error {
+  margin: 0;
+  font-size: var(--fs-sm);
+}
+.desktop-shortcut__status {
+  color: var(--ink-muted);
+}
+.desktop-shortcut__status code {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  color: var(--ink-soft);
+}
+.desktop-shortcut__error {
+  color: var(--carmine);
+}
+
 /* Heraldry pipeline KV strip + progress bar */
 .heraldry-strip {
   display: grid;

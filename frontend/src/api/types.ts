@@ -720,6 +720,14 @@ export interface FirstRunStatus {
   wizard_dismissed_at: string | null;
 }
 
+// Issue #10: POST /api/settings/desktop-shortcut. `path` is the absolute
+// path of the created shortcut (`.desktop` on Linux, `.lnk` on Windows);
+// `platform` is "linux" or "windows". Errors come back as HTTP statuses.
+export interface DesktopShortcutResponse {
+  path: string;
+  platform: string;
+}
+
 // audit F-44 / ck3_chronicler-w3wk: mirrors of the BE SSE frame
 // envelopes in src/chronicler/api/routes/{importer,settings}.py.
 // These are the contract for the three SSE channels — keep field
