@@ -49,6 +49,9 @@ from pathlib import Path
 
 import httpx
 
+from chronicler.narrative.model_resolution import (
+    narrative_effort,
+)
 from chronicler.narrative.prose_io import (
     BRIEFING_WRAPPER_INSTRUCTION,
     _missing_prose_message,
@@ -114,6 +117,10 @@ class Preset:
     # protocol still expects ``max_tokens``. Getting this wrong 400s every
     # single generation on that vendor.
     max_tokens_field: str = "max_tokens"
+    # Only OpenAI's reasoning models accept ``reasoning_effort``; the other
+    # implementations of the protocol 400 on an unknown field, so it is
+    # sent only for the vendor whose docs define it.
+    sends_reasoning_effort: bool = False
 
 
 PRESETS: dict[str, Preset] = {
@@ -123,6 +130,7 @@ PRESETS: dict[str, Preset] = {
         requires_key=True,
         max_concurrent=4,
         max_tokens_field="max_completion_tokens",
+        sends_reasoning_effort=True,
     ),
     "deepseek": Preset(
         id="deepseek",
@@ -318,6 +326,8 @@ class OpenAICompatibleProvider(NarrativeProvider):
             ],
             self._preset.max_tokens_field: self._max_output_tokens,
         }
+        if self._preset.sends_reasoning_effort:
+            body["reasoning_effort"] = narrative_effort()
         headers = {"content-type": "application/json"}
         if self._api_key:
             headers["authorization"] = f"Bearer {self._api_key}"

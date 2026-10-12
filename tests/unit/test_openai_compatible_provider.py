@@ -440,6 +440,61 @@ async def test_other_vendors_use_legacy_max_tokens(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_openai_preset_sends_reasoning_effort(tmp_path, monkeypatch):
+    """OpenAI's reasoning models accept ``reasoning_effort``; it carries
+    ``narrative_effort`` through unchanged so prose quality doesn't depend
+    on the backend."""
+    monkeypatch.setattr("chronicler.narrative.openai_compatible.narrative_effort", lambda: "xhigh")
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return _response()
+
+    p = _provider_with(handler, tmp_path, preset="openai")
+    await p.generate(_request())
+    assert captured["body"]["reasoning_effort"] == "xhigh"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("preset", ["deepseek", "openrouter", "ollama", "lmstudio"])
+async def test_other_vendors_never_get_reasoning_effort(tmp_path, preset):
+    """DeepSeek, OpenRouter, Ollama and LM Studio reject an unknown field
+    with a 400; the key must be absent, not ``None`` or empty."""
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return _response()
+
+    key = None if preset in ("ollama", "lmstudio") else TEST_KEY
+    p = _provider_with(handler, tmp_path, preset=preset, api_key=key, model="qwen3:14b")
+    await p.generate(_request())
+    assert "reasoning_effort" not in captured["body"]
+
+
+@pytest.mark.asyncio
+async def test_generic_transport_never_gets_reasoning_effort(tmp_path):
+    """A bare base URL (vLLM, a proxy) has no preset and no vendor docs
+    promising the field, so it must be absent too."""
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return _response()
+
+    p = _provider_with(
+        handler,
+        tmp_path,
+        preset=None,
+        base_url="http://localhost:8000/v1",
+        api_key=None,
+    )
+    await p.generate(_request())
+    assert "reasoning_effort" not in captured["body"]
+
+
+@pytest.mark.asyncio
 async def test_max_output_tokens_override(tmp_path):
     captured: dict = {}
 
