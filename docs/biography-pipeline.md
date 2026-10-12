@@ -136,9 +136,9 @@ provider path, so it produces a `vN+1` artifact exactly like a live death does.
 
 `CLAUDE.md` is written in opposition to the assistant defaults it has to override: a role
 override ("this is a chronicle project, not a software project"), hard bans (no code, no
-"Here is the biography" framing, no process narration), an anti-fabrication rule (every fact
-traces to the briefing; if you would have to invent to make a sentence work, omit the
-sentence), an opening-sentence rule (name the subject and an event; peer realms appear only
+"Here is the biography" framing, no process narration), an anti-fabrication rule (every hard fact
+traces to the briefing; colour such as season, gesture and mood is allowed as long as it adds
+nothing a reader could check against the save and find false), an opening-sentence rule (name the subject and an event; peer realms appear only
 next to events that touch them), naming discipline, and the commit rule (the tool commits,
 you do not).
 
@@ -191,6 +191,7 @@ Recorded events (chronological):
 | Chronicle directory | `<data dir>/prose` | Settings → Prose repo, `prose_repo_path` setting, or `CHRONICLER_PROSE_REPO_PATH`. Created by `chronicler init-prose`. |
 | Model, all kinds | per-kind defaults | Settings → The engine, `narrative_model` setting, or `CHRONICLER_NARRATIVE_MODEL`. |
 | Model, per kind | Opus-tier | `narrative_bio_model` / `narrative_closing_model`, or `CHRONICLER_NARRATIVE_{BIO,CLOSING}_MODEL`. |
+| Effort (claude-code) | `high` | `narrative_effort` setting or `CHRONICLER_NARRATIVE_EFFORT`: `low`, `medium`, `high`, `xhigh` or `max`. Passed as `--effort`; below `high`, Opus 5.5 writes dated lists instead of lives. |
 | `claude` binary | `claude` from PATH | `CHRONICLER_CLAUDE_CODE_BIN`. |
 | Anthropic key | none | Settings → Provider & LLM, `anthropic_api_key` setting, or `ANTHROPIC_API_KEY`. |
 | OpenAI-compatible target | none | Settings → Provider & LLM, or `CHRONICLER_OPENAI_{PRESET,BASE_URL,MODEL,API_KEY}`. |

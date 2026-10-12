@@ -420,11 +420,14 @@ def _format_world_context_block(
             )
 
     lines.append("")
+    # Issue #13: this used to ask for an opening scene-setter paragraph,
+    # contradicting the register's 1p50 opening rule and the woven voice
+    # file (constraint 11) that every world-context briefing is paired with.
     lines.append(
-        "Open the biography with one short scene-setter paragraph (3-5 sentences) "
-        "framing the character's neighbourhood from these facts. Use the kingdom "
-        "and ruler names exactly as given. Do not invent additional realms, "
-        "rulers, or holdings. After the paragraph, continue with the biography proper."
+        "These facts are background. Do not open the biography with them. Bring "
+        "a realm, ruler, culture or faith into the prose only where a recorded "
+        "event touches it. Use the kingdom and ruler names exactly as given. Do "
+        "not invent additional realms, rulers, or holdings."
     )
 
     return "\n".join(lines)

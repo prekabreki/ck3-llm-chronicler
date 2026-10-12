@@ -24,6 +24,7 @@ def _clean_model_env(monkeypatch, tmp_path):
     """
     for var in mr.ALL_MODEL_ENV_VARS:
         monkeypatch.delenv(var, raising=False)
+    monkeypatch.delenv(mr.NARRATIVE_EFFORT_ENV, raising=False)
     monkeypatch.setattr(
         "chronicler.settings_store.DEFAULT_SETTINGS_PATH",
         tmp_path / "chronicler_settings.json",
@@ -247,3 +248,29 @@ def test_resolved_models_reports_settings_global_override():
     assert snap["biography"] == "claude-opus-5"
     assert snap["closing"] == "claude-opus-5"
     assert snap["global_override"] == "claude-opus-5"
+
+
+# --- Issue #13: narrative effort ---
+
+
+def test_effort_defaults_to_high():
+    assert mr.narrative_effort() == "high"
+
+
+def test_effort_env_is_honoured(monkeypatch):
+    monkeypatch.setenv("CHRONICLER_NARRATIVE_EFFORT", "xhigh")
+    assert mr.narrative_effort() == "xhigh"
+
+
+def test_effort_setting_beats_env(monkeypatch):
+    from chronicler.settings_store import save_settings
+
+    save_settings({"narrative_effort": "Medium"})
+    monkeypatch.setenv("CHRONICLER_NARRATIVE_EFFORT", "max")
+    assert mr.narrative_effort() == "medium"
+
+
+def test_unknown_effort_falls_back_to_default(monkeypatch, caplog):
+    monkeypatch.setenv("CHRONICLER_NARRATIVE_EFFORT", "extreme")
+    assert mr.narrative_effort() == mr.DEFAULT_EFFORT
+    assert "extreme" in caplog.text

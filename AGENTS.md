@@ -15,10 +15,15 @@ to an LLM through one of three interchangeable transports. `docs/architecture.md
 
 ## The rule that matters most
 
-**The craft rules forbid invention.** If a fact is not in the briefing, the sentence does not get
-written. When you touch prompt assembly, briefing construction, or anything that feeds the model,
-assume a reader will check the output against the save. Adding a plausible detail the data does
-not support is the one unforgivable bug in this codebase.
+**The craft rules forbid inventing facts.** Every hard fact in a biography (a named person, place,
+realm, title, battle, child, marriage, cause of death, outcome, date or number) must come from the
+briefing. When you touch prompt assembly, briefing construction, or anything that feeds the model,
+assume a reader will check the output against the save. A hard fact the data does not support is
+the one unforgivable bug in this codebase.
+
+Colour is not a hard fact. These are medieval biographies, and the register deliberately lets the
+model supply texture (season, weather, gesture, mood, plausible feeling) as long as it adds nothing
+a reader could check and find false. See the Anti-fabrication section of `prose-template/CLAUDE.md`.
 
 ## Layout
 

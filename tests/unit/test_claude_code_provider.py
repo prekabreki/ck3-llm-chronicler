@@ -20,6 +20,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from chronicler.narrative import model_resolution as mr
 from chronicler.narrative.claude_code import (
     _API_MODE_ENV_VARS_TO_STRIP,
     ClaudeCodeProvider,
@@ -922,6 +923,7 @@ async def test_generate_passes_correct_argv_to_subprocess(tmp_path: Path, monkey
     (--permission-mode, -p). If any of these change accidentally we
     fail loudly."""
     prose = _make_prose_repo(tmp_path)
+    monkeypatch.delenv(mr.NARRATIVE_EFFORT_ENV, raising=False)
     captured: dict[str, list] = {}
 
     async def fake_create_subprocess_exec(*argv, **kwargs):
@@ -951,6 +953,9 @@ async def test_generate_passes_correct_argv_to_subprocess(tmp_path: Path, monkey
     assert argv[0] == "claude"
     assert "--print" in argv
     assert "--model" in argv and "claude-opus-4-7[1m]" in argv
+    # Issue #13: effort is explicit, never inherited from the user's global
+    # Claude Code settings.
+    assert argv[argv.index("--effort") + 1] == mr.DEFAULT_EFFORT
     assert "--output-format" in argv and "json" in argv
     # Lean scoped completion: tools denied so the model can't go agentic.
     tools_idx = argv.index("--disallowedTools")

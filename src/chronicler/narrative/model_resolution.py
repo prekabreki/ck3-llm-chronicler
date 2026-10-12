@@ -13,11 +13,14 @@ for nothing (see the cs1o spec for the grounded numbers).
 
 from __future__ import annotations
 
+import logging
 import os
 from enum import StrEnum
 
 # Backend-neutral envs (cs1o). Win over the legacy CHRONICLER_CLAUDE_CODE_*
 # spellings, which remain as deprecated aliases for one release.
+_log = logging.getLogger(__name__)
+
 NARRATIVE_MODEL_ENV = "CHRONICLER_NARRATIVE_MODEL"
 NARRATIVE_BIO_MODEL_ENV = "CHRONICLER_NARRATIVE_BIO_MODEL"
 NARRATIVE_CLOSING_MODEL_ENV = "CHRONICLER_NARRATIVE_CLOSING_MODEL"
@@ -58,6 +61,16 @@ ALL_MODEL_SETTING_KEYS = (
 DEFAULT_MODEL = "claude-opus-4-7"
 DEFAULT_BIO_MODEL = DEFAULT_MODEL
 DEFAULT_CLOSING_MODEL = DEFAULT_MODEL
+
+# Issue #13: how hard the model thinks before it writes. On medium,
+# Opus 5.5 spends ~600-2,400 output tokens per biography and writes a
+# dated list; on high it spends ~3,300 and weaves the life. Measured on
+# the same briefing, same register, same model. Settings beat env, as for
+# the model tag. Honoured by the claude-code transport (``--effort``).
+NARRATIVE_EFFORT_ENV = "CHRONICLER_NARRATIVE_EFFORT"
+NARRATIVE_EFFORT_SETTING = "narrative_effort"
+VALID_EFFORTS = ("low", "medium", "high", "xhigh", "max")
+DEFAULT_EFFORT = "high"
 
 # Engage the 1M window above this estimated prompt size. 180k leaves
 # ~10% headroom under the 200k standard window for the chars/4
@@ -123,6 +136,27 @@ def model_for_kind(kind: str) -> str:
         if value:
             return value
     return default
+
+
+def narrative_effort() -> str:
+    """Resolve the effort level for narrative calls: setting > env > default.
+
+    An unrecognised value falls back to the default rather than reaching
+    the CLI, which would reject the whole call over a typo in settings.
+    """
+    for value in (_setting(NARRATIVE_EFFORT_SETTING), _env(NARRATIVE_EFFORT_ENV)):
+        if value:
+            lowered = value.lower()
+            if lowered in VALID_EFFORTS:
+                return lowered
+            _log.warning(
+                "ignoring unknown narrative effort %r (expected one of %s); using %r",
+                value,
+                ", ".join(VALID_EFFORTS),
+                DEFAULT_EFFORT,
+            )
+            return DEFAULT_EFFORT
+    return DEFAULT_EFFORT
 
 
 def resolved_models() -> dict[str, str | None]:

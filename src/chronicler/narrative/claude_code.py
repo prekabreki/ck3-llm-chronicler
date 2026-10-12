@@ -69,6 +69,9 @@ from chronicler.narrative.model_resolution import (
 from chronicler.narrative.model_resolution import (
     model_for_kind as _model_for_kind,
 )
+from chronicler.narrative.model_resolution import (
+    narrative_effort as _narrative_effort,
+)
 from chronicler.narrative.prose_io import (
     BRIEFING_WRAPPER_INSTRUCTION,
     _missing_prose_message,
@@ -480,6 +483,10 @@ class ClaudeCodeProvider(NarrativeProvider):
             "--print",
             "--model",
             model,
+            # Issue #13: explicit, so the prose doesn't silently depend on
+            # whatever effortLevel the user's global Claude Code settings hold.
+            "--effort",
+            _narrative_effort(),
             "--output-format",
             "json",
             "--disallowedTools",
