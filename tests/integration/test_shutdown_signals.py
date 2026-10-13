@@ -29,6 +29,7 @@ test, and binding one would make these flaky for no coverage.
 
 from __future__ import annotations
 
+import os
 import select
 import signal
 import subprocess
@@ -42,6 +43,8 @@ import pytest
 # Generous: these spawn a fresh interpreter and import uvicorn. The assertion
 # is never "it finished fast", only "it finished" — a hang is the failure.
 _TIMEOUT = 60
+
+_SRC = Path(__file__).resolve().parents[2] / "src"
 
 _PROGRAM = textwrap.dedent(
     """
@@ -95,11 +98,17 @@ def _spawn(
     tmp_path: Path, mode: str, teardown_delay: float = 0.0
 ) -> tuple[subprocess.Popen[str], Path]:
     marker = tmp_path / f"teardown-{mode}.marker"
+    # Issue #18: pin the helper to the source this test run imports, as
+    # pytest's `pythonpath = ["src"]` does in-process. Without it the child
+    # imports whatever checkout the venv's editable install last pointed at.
+    inherited = os.environ.get("PYTHONPATH")
+    pythonpath = os.pathsep.join([str(_SRC), inherited] if inherited else [str(_SRC)])
     proc = subprocess.Popen(
         [sys.executable, "-c", _PROGRAM, str(marker), mode, str(teardown_delay)],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
+        env={**os.environ, "PYTHONPATH": pythonpath},
     )
     # Wait for the child to report its handlers are installed. Signalling
     # before that would exercise the default disposition and pass for the
@@ -201,3 +210,33 @@ def test_sigint_reaches_teardown_either_way(tmp_path: Path) -> None:
     proc.send_signal(signal.SIGINT)
     proc.wait(timeout=_TIMEOUT)
     assert marker.is_file()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX signal semantics")
+def test_helper_imports_this_checkouts_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Issue #18: the helper must not depend on where the venv's editable
+    install points.
+
+    A child interpreter does not get pytest's ``pythonpath = ["src"]``. Left
+    to itself it resolves ``chronicler`` through the venv's editable-install
+    ``.pth``, which names whichever checkout last installed itself into the
+    venv. Point that at a deleted worktree and every test above fails with
+    ``helper exited before it could be signalled: 1`` and a
+    ``ModuleNotFoundError`` in the child's stderr, on the first full run
+    only: ``test_db_schema``'s ``uv run`` re-syncs the venv later in the same
+    run, so the next run passes.
+
+    Here a stale checkout, one with no ``chronicler.orchestrator``, sits
+    ahead of the venv on the inherited path. ``_spawn`` fails the test unless
+    the helper still imports this checkout's source and reaches its handshake.
+    """
+    stale_src = tmp_path / "stale-checkout" / "src"
+    (stale_src / "chronicler").mkdir(parents=True)
+    (stale_src / "chronicler" / "__init__.py").write_text("")
+    monkeypatch.setenv("PYTHONPATH", str(stale_src))
+
+    proc, _ = _spawn(tmp_path, "absorb")
+    proc.kill()
+    proc.wait(timeout=_TIMEOUT)
