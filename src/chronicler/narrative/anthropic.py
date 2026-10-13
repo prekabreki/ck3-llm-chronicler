@@ -44,6 +44,7 @@ from chronicler.narrative.model_resolution import (
     LongContextPolicy,
     estimate_prompt_tokens,
     model_for_kind,
+    narrative_effort,
     needs_long_context,
 )
 from chronicler.narrative.model_resolution import (
@@ -70,6 +71,8 @@ log = logging.getLogger(__name__)
 DEFAULT_ANTHROPIC_BASE_URL = "https://api.anthropic.com"
 # Real outputs: avg 9.5k tokens, p95 19.7k, max observed 22k. 32k gives
 # ~45% headroom over the worst real call without inviting runaways.
+# This is the PROSE budget: thinking headroom is added on top per effort
+# level (issue #14, _THINKING_HEADROOM_TOKENS).
 DEFAULT_ANTHROPIC_MAX_TOKENS = 32_000
 # Wall-clock ceiling for one generation INCLUDING retries — parity with
 # ClaudeCodeProvider's 600s. The per-chunk read timeout below is what
@@ -87,6 +90,82 @@ CONTEXT_1M_BETA = "context-1m-2025-08-07"
 
 _RETRY_ATTEMPTS = 3
 _RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504, 529})
+
+# Issue #14: narrative_effort reaches this transport as ``output_config.effort``
+# with adaptive thinking, the Messages API's effort/thinking control. Models
+# released from Opus 4.7 on take all five levels; the older ones below take a
+# subset, or none at all, and 400 on a value they don't know. Anything not
+# listed is treated as current, so a new model id gets the full control
+# without a code change. Matched by prefix, so dated snapshot ids resolve.
+_FULL_EFFORTS = ("low", "medium", "high", "xhigh", "max")
+_LEGACY_EFFORT_SUPPORT: tuple[tuple[str, tuple[str, ...], bool], ...] = (
+    # (model-id prefix, accepted effort levels, takes adaptive thinking)
+    ("claude-opus-4-6", ("low", "medium", "high", "max"), True),
+    ("claude-sonnet-4-6", ("low", "medium", "high", "max"), True),
+    # Opus 4.5 takes effort but thinks only on a fixed budget_tokens, which
+    # is a different control; it gets effort alone.
+    ("claude-opus-4-5", ("low", "medium", "high"), False),
+    # No effort parameter at all: these 400 on output_config.effort.
+    ("claude-sonnet-4-5", (), False),
+    ("claude-haiku-4-5", (), False),
+    ("claude-opus-4-1", (), False),
+    ("claude-opus-4-0", (), False),
+    ("claude-sonnet-4-0", (), False),
+    ("claude-opus-4-2025", (), False),
+    ("claude-sonnet-4-2025", (), False),
+    ("claude-3", (), False),
+)
+# Thinking counts against max_tokens, so the prose budget alone would let a
+# long think truncate the biography it was meant to improve. This headroom
+# is added on top of the prose budget, scaled by how hard the model thinks.
+_THINKING_HEADROOM_TOKENS = {
+    "low": 8_000,
+    "medium": 16_000,
+    "high": 32_000,
+    "xhigh": 48_000,
+    "max": 64_000,
+}
+# The output cap of every model that takes adaptive thinking.
+_MAX_OUTPUT_TOKENS = 128_000
+
+
+def _nearest_effort(effort: str, supported: tuple[str, ...]) -> str:
+    """The supported level closest to ``effort`` on the five-level ladder,
+    preferring the lower one on a tie so an unsupported level never spends
+    more than the user asked for."""
+    rank = _FULL_EFFORTS.index(effort)
+
+    def distance(level: str) -> tuple[int, int]:
+        level_rank = _FULL_EFFORTS.index(level)
+        return abs(level_rank - rank), level_rank
+
+    return min(supported, key=distance)
+
+
+def effort_request_fields(model: str, effort: str, prose_max_tokens: int) -> dict:
+    """The request-body fields that carry ``effort`` to ``model``.
+
+    Returns ``max_tokens`` always, plus ``output_config`` and ``thinking``
+    when the model accepts them. Pure, so the per-model mapping is testable
+    without a stream.
+    """
+    efforts, adaptive = _FULL_EFFORTS, True
+    for prefix, supported, takes_adaptive in _LEGACY_EFFORT_SUPPORT:
+        if model.startswith(prefix):
+            efforts, adaptive = supported, takes_adaptive
+            break
+    if not efforts:
+        return {"max_tokens": prose_max_tokens}
+    fields: dict = {
+        "max_tokens": prose_max_tokens,
+        "output_config": {"effort": _nearest_effort(effort, efforts)},
+    }
+    if adaptive:
+        fields["thinking"] = {"type": "adaptive"}
+        fields["max_tokens"] = min(
+            prose_max_tokens + _THINKING_HEADROOM_TOKENS[effort], _MAX_OUTPUT_TOKENS
+        )
+    return fields
 
 
 class AnthropicProvider(NarrativeProvider):
@@ -221,7 +300,7 @@ class AnthropicProvider(NarrativeProvider):
         user_content = BRIEFING_WRAPPER_INSTRUCTION + briefing_text
         body = {
             "model": model,
-            "max_tokens": self._max_tokens,
+            **effort_request_fields(model, narrative_effort(), self._max_tokens),
             "stream": True,
             "system": system_blocks,
             "messages": [{"role": "user", "content": user_content}],

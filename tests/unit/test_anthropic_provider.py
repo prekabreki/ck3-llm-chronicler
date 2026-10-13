@@ -31,6 +31,7 @@ from chronicler.narrative.provider import NarrativeRequest
 def _clean_model_env(monkeypatch):
     for var in mr.ALL_MODEL_ENV_VARS:
         monkeypatch.delenv(var, raising=False)
+    monkeypatch.delenv(mr.NARRATIVE_EFFORT_ENV, raising=False)
 
 
 @pytest.fixture(autouse=True)
@@ -213,7 +214,11 @@ async def test_generate_accumulates_stream_and_usage(tmp_path):
     assert captured["url"].endswith("/v1/messages")
     assert captured["body"]["stream"] is True
     assert captured["body"]["model"] == "claude-opus-4-7"
-    assert captured["body"]["max_tokens"] == DEFAULT_ANTHROPIC_MAX_TOKENS
+    # Default model (Opus 4.7) at the default effort (high): adaptive
+    # thinking, with headroom over the prose budget for the think.
+    assert captured["body"]["max_tokens"] == DEFAULT_ANTHROPIC_MAX_TOKENS + 32_000
+    assert captured["body"]["output_config"] == {"effort": "high"}
+    assert captured["body"]["thinking"] == {"type": "adaptive"}
     assert captured["headers"]["x-api-key"] == "test-key"
     assert captured["headers"]["anthropic-version"] == "2023-06-01"
     assert "anthropic-beta" not in captured["headers"]
@@ -260,6 +265,156 @@ async def test_system_block_carries_the_requests_system_prompt_with_cache_contro
     assert [b["text"] for b in system] == ["(the register)\n\n(woven voice rules)"]
     # cache breakpoint on the static prefix — one cache entry per kind.
     assert system[-1]["cache_control"] == {"type": "ephemeral"}
+
+
+# --- generate: narrative_effort (issue #14) ---
+
+
+async def _captured_body(tmp_path, monkeypatch, *, model: str, effort: str) -> dict:
+    monkeypatch.setenv(mr.NARRATIVE_EFFORT_ENV, effort)
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return _stream_response()
+
+    p = _provider_with(handler, tmp_path, model=model)
+    await p.generate(_request())
+    return captured["body"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "model", ["claude-opus-5-5", "claude-opus-4-7", "claude-sonnet-5-5", "claude-haiku-5-5"]
+)
+@pytest.mark.parametrize("effort", ["low", "medium", "high", "xhigh", "max"])
+async def test_current_models_get_effort_and_adaptive_thinking(
+    tmp_path, monkeypatch, model, effort
+):
+    """Every current model takes all five levels with adaptive thinking.
+    Opus 4.7 runs WITHOUT thinking unless asked, and Opus 5.5 defaults to
+    medium, so both fields go out explicitly."""
+    body = await _captured_body(tmp_path, monkeypatch, model=model, effort=effort)
+    assert body["output_config"] == {"effort": effort}
+    assert body["thinking"] == {"type": "adaptive"}
+
+
+@pytest.mark.asyncio
+async def test_unknown_future_model_is_treated_as_current(tmp_path, monkeypatch):
+    body = await _captured_body(tmp_path, monkeypatch, model="claude-opus-6", effort="max")
+    assert body["output_config"] == {"effort": "max"}
+    assert body["thinking"] == {"type": "adaptive"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("effort", "headroom"),
+    [("low", 8_000), ("medium", 16_000), ("high", 32_000), ("xhigh", 48_000), ("max", 64_000)],
+)
+async def test_max_tokens_leaves_room_for_thinking(tmp_path, monkeypatch, effort, headroom):
+    """Thinking counts against max_tokens: the whole prose budget must
+    survive the think, so headroom is added on top of it."""
+    body = await _captured_body(tmp_path, monkeypatch, model="claude-opus-5-5", effort=effort)
+    assert body["max_tokens"] == DEFAULT_ANTHROPIC_MAX_TOKENS + headroom
+    assert body["max_tokens"] <= 128_000
+
+
+@pytest.mark.asyncio
+async def test_max_tokens_is_capped_at_the_model_output_limit(tmp_path, monkeypatch):
+    monkeypatch.setenv(mr.NARRATIVE_EFFORT_ENV, "max")
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return _stream_response()
+
+    p = _provider_with(handler, tmp_path, model="claude-opus-5-5", max_tokens=100_000)
+    await p.generate(_request())
+    assert captured["body"]["max_tokens"] == 128_000
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("model", "effort", "sent"),
+    [
+        ("claude-opus-4-6", "xhigh", "high"),
+        ("claude-opus-4-6", "max", "max"),
+        ("claude-sonnet-4-6", "xhigh", "high"),
+        ("claude-sonnet-4-6", "low", "low"),
+    ],
+)
+async def test_four_six_models_map_xhigh_to_the_nearest_level(
+    tmp_path, monkeypatch, model, effort, sent
+):
+    """The 4.6 generation has no xhigh; it maps to the nearest supported
+    level, the lower one on a tie so it never spends more than asked."""
+    body = await _captured_body(tmp_path, monkeypatch, model=model, effort=effort)
+    assert body["output_config"] == {"effort": sent}
+    assert body["thinking"] == {"type": "adaptive"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("effort", "sent"), [("xhigh", "high"), ("max", "high"), ("low", "low")])
+async def test_opus_4_5_gets_effort_without_adaptive_thinking(tmp_path, monkeypatch, effort, sent):
+    """Opus 4.5 takes low/medium/high effort but not adaptive thinking, so
+    the prose budget is sent unchanged."""
+    body = await _captured_body(tmp_path, monkeypatch, model="claude-opus-4-5", effort=effort)
+    assert body["output_config"] == {"effort": sent}
+    assert "thinking" not in body
+    assert body["max_tokens"] == DEFAULT_ANTHROPIC_MAX_TOKENS
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "model", ["claude-haiku-4-5", "claude-sonnet-4-5", "claude-sonnet-4-20250514"]
+)
+async def test_models_without_effort_get_neither_field(tmp_path, monkeypatch, model):
+    """These 400 on output_config.effort, so it is never sent to them."""
+    body = await _captured_body(tmp_path, monkeypatch, model=model, effort="high")
+    assert "output_config" not in body
+    assert "thinking" not in body
+    assert body["max_tokens"] == DEFAULT_ANTHROPIC_MAX_TOKENS
+
+
+@pytest.mark.asyncio
+async def test_thinking_deltas_are_not_prose(tmp_path):
+    """With thinking on, the stream carries a thinking block before the
+    text; only text_delta reaches the biography."""
+    thinking = _sse(
+        [
+            (
+                "content_block_start",
+                {
+                    "type": "content_block_start",
+                    "index": 0,
+                    "content_block": {"type": "thinking", "thinking": ""},
+                },
+            ),
+            (
+                "content_block_delta",
+                {
+                    "type": "content_block_delta",
+                    "index": 0,
+                    "delta": {"type": "thinking_delta", "thinking": "plan the life"},
+                },
+            ),
+            (
+                "content_block_delta",
+                {
+                    "type": "content_block_delta",
+                    "index": 0,
+                    "delta": {"type": "signature_delta", "signature": "sig"},
+                },
+            ),
+            ("content_block_stop", {"type": "content_block_stop", "index": 0}),
+        ]
+    )
+    stream = _happy_stream()
+    first_event_end = stream.index(b"\n\n") + 2
+    content = stream[:first_event_end] + thinking + stream[first_event_end:]
+    p = _provider_with(lambda request: _stream_response(content), tmp_path)
+    resp = await p.generate(_request())
+    assert resp.text == "Harold was bold."
 
 
 @pytest.mark.asyncio

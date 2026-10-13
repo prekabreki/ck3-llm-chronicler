@@ -191,7 +191,7 @@ Recorded events (chronological):
 | Chronicle directory | `<data dir>/prose` | Settings → Prose repo, `prose_repo_path` setting, or `CHRONICLER_PROSE_REPO_PATH`. Created by `chronicler init-prose`. |
 | Model, all kinds | per-kind defaults | Settings → The engine, `narrative_model` setting, or `CHRONICLER_NARRATIVE_MODEL`. |
 | Model, per kind | Opus-tier | `narrative_bio_model` / `narrative_closing_model`, or `CHRONICLER_NARRATIVE_{BIO,CLOSING}_MODEL`. |
-| Effort (claude-code, openai) | `high` | `narrative_effort` setting or `CHRONICLER_NARRATIVE_EFFORT`: `low`, `medium`, `high`, `xhigh` or `max`. Passed as `--effort`; below `high`, Opus 5.5 writes dated lists instead of lives. Sent as `reasoning_effort` on the `openai` preset. |
+| Effort | `high` | `narrative_effort` setting or `CHRONICLER_NARRATIVE_EFFORT`: `low`, `medium`, `high`, `xhigh` or `max`. Passed as `--effort`; below `high`, Opus 5.5 writes dated lists instead of lives. Sent as `reasoning_effort` on the `openai` preset, and as `output_config.effort` with adaptive thinking on the `anthropic` backend (older models get the nearest level they accept, or none). |
 | `claude` binary | `claude` from PATH | `CHRONICLER_CLAUDE_CODE_BIN`. |
 | Anthropic key | none | Settings → Provider & LLM, `anthropic_api_key` setting, or `ANTHROPIC_API_KEY`. |
 | OpenAI-compatible target | none | Settings → Provider & LLM, or `CHRONICLER_OPENAI_{PRESET,BASE_URL,MODEL,API_KEY}`. |
