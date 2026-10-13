@@ -66,7 +66,9 @@ DEFAULT_CLOSING_MODEL = DEFAULT_MODEL
 # Opus 5.5 spends ~600-2,400 output tokens per biography and writes a
 # dated list; on high it spends ~3,300 and weaves the life. Measured on
 # the same briefing, same register, same model. Settings beat env, as for
-# the model tag. Honoured by the claude-code transport (``--effort``).
+# the model tag. Honoured by claude-code (``--effort``), anthropic
+# (``output_config.effort``, issue #14) and the openai preset
+# (``reasoning_effort``).
 NARRATIVE_EFFORT_ENV = "CHRONICLER_NARRATIVE_EFFORT"
 NARRATIVE_EFFORT_SETTING = "narrative_effort"
 VALID_EFFORTS = ("low", "medium", "high", "xhigh", "max")
