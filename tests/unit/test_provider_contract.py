@@ -37,6 +37,7 @@ _ANTHROPIC_STREAM = (
     b'"text":"Harold was bold."}}\n\n'
     b'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},'
     b'"usage":{"output_tokens":4}}\n\n'
+    b'data: {"type":"message_stop"}\n\n'
 )
 
 _CHAT_COMPLETION = {
@@ -175,6 +176,7 @@ def test_the_mock_payloads_stay_in_sync_with_the_real_shapes() -> None:
         "message_start",
         "content_block_delta",
         "message_delta",
+        "message_stop",
     ]
 
 
