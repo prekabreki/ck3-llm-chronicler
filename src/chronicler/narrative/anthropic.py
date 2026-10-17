@@ -509,6 +509,7 @@ class AnthropicProvider(NarrativeProvider):
         text_parts: list[str] = []
         usage: dict = {}
         stop_reason: str | None = None
+        saw_message_stop = False
         model = str(body["model"])
         async with self._client.stream(
             "POST",
@@ -543,6 +544,8 @@ class AnthropicProvider(NarrativeProvider):
                     if delta.get("stop_reason") is not None:
                         stop_reason = str(delta.get("stop_reason"))
                     usage.update(payload.get("usage") or {})
+                elif ptype == "message_stop":
+                    saw_message_stop = True
                 elif ptype == "error":
                     # In-stream error event (overloaded mid-stream etc.)
                     err = payload.get("error") or {}
@@ -559,8 +562,23 @@ class AnthropicProvider(NarrativeProvider):
                 "anthropic: response truncated at max_tokens "
                 f"(model={model}, chars={len(''.join(text_parts))})"
             )
-        if stop_reason not in (None, "end_turn", "stop_sequence"):
-            log.warning("anthropic: unexpected stop_reason %r", stop_reason)
+        # An HTTP 200 can end cleanly while the application-level SSE is
+        # still incomplete. A stream that never reaches the terminal
+        # message_stop event, or reaches it without a supported stop_reason,
+        # produced a partial biography: non-empty text passes the downstream
+        # non-empty check, gets a footer, is git-committed, and lands in the
+        # DB as finished. Raise so the pipeline's error net records a failed
+        # generation instead of permanently recording a mid-sentence cut-off.
+        if not saw_message_stop:
+            raise RuntimeError(
+                "anthropic: stream ended before the terminal message_stop event "
+                f"(model={model}, chars={len(''.join(text_parts))})"
+            )
+        if stop_reason not in ("end_turn", "stop_sequence"):
+            raise RuntimeError(
+                f"anthropic: missing or unsupported stop_reason {stop_reason!r} "
+                f"(model={model}, chars={len(''.join(text_parts))})"
+            )
         return {"text": "".join(text_parts).strip(), "model": model, "usage": usage}
 
     async def aclose(self) -> None:

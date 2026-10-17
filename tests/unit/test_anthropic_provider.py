@@ -558,6 +558,162 @@ async def test_max_tokens_truncation_raises_runtime_error(tmp_path):
         await p.generate(_request())
 
 
+def _recording_commit(monkeypatch) -> dict:
+    recorded: dict = {}
+
+    async def recorder(**kwargs):
+        recorded.update(kwargs)
+
+    monkeypatch.setattr("chronicler.narrative.anthropic.git_commit_biography", recorder)
+    return recorded
+
+
+@pytest.mark.asyncio
+async def test_eof_after_text_raises_before_persistence(tmp_path, monkeypatch):
+    """An HTTP 200 that ends right after text deltas (no message_delta, no
+    message_stop) is an incomplete SSE stream: the partial prose must never
+    reach biography persistence or the commit helper."""
+    recorded = _recording_commit(monkeypatch)
+
+    stream = _sse(
+        [
+            (
+                "message_start",
+                {
+                    "type": "message_start",
+                    "message": {
+                        "model": "claude-opus-4-7",
+                        "usage": {"input_tokens": 1, "output_tokens": 1},
+                    },
+                },
+            ),
+            (
+                "content_block_delta",
+                {
+                    "type": "content_block_delta",
+                    "index": 0,
+                    "delta": {"type": "text_delta", "text": "A synthetic biography stops mid"},
+                },
+            ),
+        ]
+    )
+
+    p = _provider_with(lambda request: _stream_response(stream), tmp_path)
+    with pytest.raises(RuntimeError, match="message_stop"):
+        await p.generate(_request())
+    assert not (tmp_path / "biographies" / "camp-1" / "42-v1.md").exists()
+    assert recorded == {}
+
+
+@pytest.mark.asyncio
+async def test_eof_after_final_delta_before_message_stop_raises(tmp_path, monkeypatch):
+    """A stream carrying message_delta with a valid stop_reason but no
+    terminal message_stop event is also incomplete: it must raise before
+    any biography file or commit."""
+    recorded = _recording_commit(monkeypatch)
+
+    stream = _sse(
+        [
+            (
+                "message_start",
+                {
+                    "type": "message_start",
+                    "message": {
+                        "model": "claude-opus-4-7",
+                        "usage": {"input_tokens": 1, "output_tokens": 1},
+                    },
+                },
+            ),
+            (
+                "content_block_start",
+                {
+                    "type": "content_block_start",
+                    "index": 0,
+                    "content_block": {"type": "text", "text": ""},
+                },
+            ),
+            (
+                "content_block_delta",
+                {
+                    "type": "content_block_delta",
+                    "index": 0,
+                    "delta": {"type": "text_delta", "text": "A synthetic biography stops mid"},
+                },
+            ),
+            ("content_block_stop", {"type": "content_block_stop", "index": 0}),
+            (
+                "message_delta",
+                {
+                    "type": "message_delta",
+                    "delta": {"stop_reason": "end_turn"},
+                    "usage": {"output_tokens": 9},
+                },
+            ),
+        ]
+    )
+
+    p = _provider_with(lambda request: _stream_response(stream), tmp_path)
+    with pytest.raises(RuntimeError, match="message_stop"):
+        await p.generate(_request())
+    assert not (tmp_path / "biographies" / "camp-1" / "42-v1.md").exists()
+    assert recorded == {}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "delta",
+    [{}, {"stop_reason": "refusal"}],
+    ids=["missing_stop_reason", "unsupported_stop_reason"],
+)
+async def test_message_stop_without_successful_stop_reason_raises(tmp_path, monkeypatch, delta):
+    """message_stop arrives, but without a successful stop reason
+    (end_turn/stop_sequence): the biography must not be persisted."""
+    recorded = _recording_commit(monkeypatch)
+
+    stream = _sse(
+        [
+            (
+                "message_start",
+                {
+                    "type": "message_start",
+                    "message": {
+                        "model": "claude-opus-4-7",
+                        "usage": {"input_tokens": 1, "output_tokens": 1},
+                    },
+                },
+            ),
+            (
+                "content_block_start",
+                {
+                    "type": "content_block_start",
+                    "index": 0,
+                    "content_block": {"type": "text", "text": ""},
+                },
+            ),
+            (
+                "content_block_delta",
+                {
+                    "type": "content_block_delta",
+                    "index": 0,
+                    "delta": {"type": "text_delta", "text": "A synthetic biography stops mid"},
+                },
+            ),
+            ("content_block_stop", {"type": "content_block_stop", "index": 0}),
+            (
+                "message_delta",
+                {"type": "message_delta", "delta": delta, "usage": {"output_tokens": 9}},
+            ),
+            ("message_stop", {"type": "message_stop"}),
+        ]
+    )
+
+    p = _provider_with(lambda request: _stream_response(stream), tmp_path)
+    with pytest.raises(RuntimeError, match="stop_reason"):
+        await p.generate(_request())
+    assert not (tmp_path / "biographies" / "camp-1" / "42-v1.md").exists()
+    assert recorded == {}
+
+
 @pytest.mark.asyncio
 async def test_wall_clock_timeout_raises_runtime_error(tmp_path, monkeypatch):
     p = _provider_with(lambda request: _stream_response(), tmp_path)

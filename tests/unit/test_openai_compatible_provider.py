@@ -381,6 +381,7 @@ async def test_user_turn_is_byte_identical_across_all_three_transports(tmp_path,
                 b'{"type":"text_delta","text":"x"}}\n\n'
                 b'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},'
                 b'"usage":{"output_tokens":1}}\n\n'
+                b'data: {"type":"message_stop"}\n\n'
             ),
             headers={"content-type": "text/event-stream"},
         )
