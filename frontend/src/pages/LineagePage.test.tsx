@@ -9,7 +9,42 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { LineagePage } from './LineagePage';
 import { useAppStore } from '../store/appStore';
 import * as client from '../api/client';
-import type { FamilyTreeResponse } from '../api/types';
+import type { CampaignResponse, FamilyTreeResponse } from '../api/types';
+
+const PALETTE = {
+  black: [0, 0, 0] as [number, number, number],
+  red: [200, 30, 30] as [number, number, number],
+};
+
+const DEFAULT_CAMPAIGN: CampaignResponse = {
+  id: 'a',
+  name: 'Wessex',
+  ck3_version: '1.19.0',
+  created_at: '2026-04-15T00:00:00+00:00',
+  last_event_at: null,
+  archived: false,
+  db_path: 'x',
+  counts: null,
+  closing_chronicle_blurb: null,
+  bookmark_date: null,
+  current_in_game_date: null,
+  current_player_character_id: null,
+  current_player_name: null,
+  current_player_nickname: null,
+  current_house_name: null,
+  founding_dynasty_name: null,
+  current_player_coa_json: null,
+  current_player_gold: null,
+  current_player_prestige_lifetime: null,
+  current_player_piety_lifetime: null,
+  current_dynasty_renown: null,
+  last_save_filename: null,
+  last_save_ingested_at: null,
+  last_save_in_game_date: null,
+  last_tick_event_count: null,
+  last_tick_event_type_tally: null,
+  last_event_in_game_date: null,
+};
 
 const TREE: FamilyTreeResponse = {
   self_node: {
@@ -84,6 +119,8 @@ beforeEach(() => {
     activeCampaign: 'Wessex',
     selectedCharacterId: 100,
   });
+  vi.spyOn(client, 'getHeraldryPalette').mockResolvedValue(PALETTE);
+  vi.spyOn(client, 'getCampaign').mockResolvedValue(DEFAULT_CAMPAIGN);
 });
 
 afterEach(() => {

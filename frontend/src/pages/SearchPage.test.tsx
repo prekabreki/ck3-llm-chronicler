@@ -10,6 +10,11 @@ import { SearchPage } from './SearchPage';
 import * as client from '../api/client';
 import type { SearchResponse } from '../api/types';
 
+const PALETTE = {
+  black: [0, 0, 0] as [number, number, number],
+  red: [200, 30, 30] as [number, number, number],
+};
+
 const RESULTS: SearchResponse = {
   query: 'guthrum',
   hits: [
@@ -65,7 +70,9 @@ function renderWithClient(ui: React.ReactNode): ReturnType<typeof render> {
   return render(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>);
 }
 
-beforeEach(() => {});
+beforeEach(() => {
+  vi.spyOn(client, 'getHeraldryPalette').mockResolvedValue(PALETTE);
+});
 
 afterEach(() => {
   cleanup();

@@ -15,9 +15,15 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { HallPage } from './HallPage';
 import { useAppStore } from '../store/appStore';
+import * as client from '../api/client';
 import * as useHallOfFameModule from './hall/useHallOfFame';
 import type { DynastyRollup } from './hall/useHallOfFame';
 import { HALL_FIXTURES } from './hall/hallFixtures';
+
+const PALETTE = {
+  black: [0, 0, 0] as [number, number, number],
+  red: [200, 30, 30] as [number, number, number],
+};
 
 function renderWithClient(ui: React.ReactNode): ReturnType<typeof render> {
   const qc = new QueryClient({
@@ -28,6 +34,7 @@ function renderWithClient(ui: React.ReactNode): ReturnType<typeof render> {
 
 beforeEach(() => {
   useAppStore.setState({ view: 'hall', activeCampaign: null, selectedCharacterId: null });
+  vi.spyOn(client, 'getHeraldryPalette').mockResolvedValue(PALETTE);
 });
 
 afterEach(() => {

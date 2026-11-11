@@ -9,7 +9,32 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TrackedPage } from './TrackedPage';
 import { useAppStore } from '../store/appStore';
 import * as client from '../api/client';
-import type { CharacterSummary, TrackedResponse } from '../api/types';
+import type {
+  CharacterSummary,
+  NarrativeQueueResponse,
+  TrackedResponse,
+} from '../api/types';
+
+const PALETTE = {
+  black: [0, 0, 0] as [number, number, number],
+  red: [200, 30, 30] as [number, number, number],
+};
+
+const EMPTY_QUEUE: NarrativeQueueResponse = {
+  queued: [],
+  active: [],
+  recent: [],
+  completed_count: 0,
+  failed_count: 0,
+  avg_duration_ms: null,
+};
+
+const DEFAULT_RULES = {
+  include_heirs: true,
+  include_spouses: true,
+  include_grandchildren: false,
+  include_county_vassals: false,
+};
 
 const TRACKED: TrackedResponse[] = [
   {
@@ -53,6 +78,10 @@ beforeEach(() => {
     activeCampaign: 'Wessex',
     selectedCharacterId: null,
   });
+  vi.spyOn(client, 'getHeraldryPalette').mockResolvedValue(PALETTE);
+  vi.spyOn(client, 'getNarrativeQueue').mockResolvedValue(EMPTY_QUEUE);
+  vi.spyOn(client, 'getAutoTrackRules').mockResolvedValue(DEFAULT_RULES);
+  vi.spyOn(client, 'listSuggestedCandidates').mockResolvedValue([]);
 });
 
 afterEach(() => {

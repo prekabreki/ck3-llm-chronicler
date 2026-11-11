@@ -53,7 +53,6 @@ uv run ruff check .                      # lint
 uv run ruff format --check .             # formatting, a SEPARATE CI gate from the line above
 cd frontend && npm ci && npm run build   # the SPA, served from /
 cd frontend && npm test                  # vitest
-cd frontend && npm run e2e               # playwright
 ```
 
 Run `chronicler doctor` when something environmental looks wrong; it checks the install before

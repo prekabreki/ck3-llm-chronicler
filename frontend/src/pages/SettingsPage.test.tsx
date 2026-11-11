@@ -10,6 +10,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { SettingsPage } from './SettingsPage';
 import { useAppStore } from '../store/appStore';
 import * as client from '../api/client';
+import * as migrateClient from '../api/migrateClient';
 import type { PathsSettings } from '../api/client';
 import type {
   CostSummaryResponse,
@@ -118,6 +119,29 @@ beforeEach(() => {
   vi.spyOn(client, 'getResolvedModels').mockResolvedValue(MODELS_DEFAULT);
   vi.spyOn(client, 'getLLMPause').mockResolvedValue(PAUSE_LIVE);
   vi.spyOn(client, 'getNarrativeBackend').mockResolvedValue(BACKEND_CLAUDE_CODE);
+  vi.spyOn(migrateClient, 'getMigrationStatus').mockResolvedValue({
+    needs_migration: [],
+    registry_needs_migration: false,
+    registry_missing_columns: [],
+  });
+  vi.spyOn(migrateClient, 'listMigrationBackups').mockResolvedValue([]);
+  vi.spyOn(client, 'getDebugLogStatus').mockResolvedValue({
+    exists: false,
+    size_bytes: 0,
+    threshold_bytes: 10_000_000,
+    exceeded: false,
+    path: '/tmp/debug.log',
+  });
+  vi.spyOn(client, 'getHeraldryStatus').mockResolvedValue({
+    extracted: true,
+    last_extraction_at: null,
+    palette_colors: 0,
+    patterns_count: 0,
+    emblems_count: 0,
+    ck3_install_dir_resolved: null,
+    ck3_install_dir_exists: false,
+    is_stale: false,
+  });
 });
 
 afterEach(() => {

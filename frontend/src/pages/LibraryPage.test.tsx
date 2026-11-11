@@ -10,6 +10,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { LibraryPage } from './LibraryPage';
 import { useAppStore } from '../store/appStore';
 import * as client from '../api/client';
+import * as migrateClient from '../api/migrateClient';
 import type { CampaignResponse } from '../api/types';
 
 const FULL_CAMPAIGN: CampaignResponse = {
@@ -157,6 +158,11 @@ beforeEach(() => {
     green: [0, 128, 0],
     yellow: [255, 200, 0],
     red: [200, 30, 30],
+  });
+  vi.spyOn(migrateClient, 'getMigrationStatus').mockResolvedValue({
+    needs_migration: [],
+    registry_needs_migration: false,
+    registry_missing_columns: [],
   });
 });
 

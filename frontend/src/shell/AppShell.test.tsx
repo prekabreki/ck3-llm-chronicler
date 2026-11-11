@@ -3,14 +3,20 @@
 // tools-cluster routes (Settings / Closing / theme), and conditional
 // rendering of the campaign pill + in-game date + tail pip.
 
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, cleanup, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { AppShell } from './AppShell';
 import { useAppStore } from '../store/appStore';
+import * as client from '../api/client';
 import * as migrateClient from '../api/migrateClient';
+
+const PALETTE = {
+  black: [0, 0, 0] as [number, number, number],
+  red: [200, 30, 30] as [number, number, number],
+};
 
 function renderWithClient(node: React.ReactNode): ReturnType<typeof render> {
   const client = new QueryClient({
@@ -18,6 +24,10 @@ function renderWithClient(node: React.ReactNode): ReturnType<typeof render> {
   });
   return render(<QueryClientProvider client={client}>{node}</QueryClientProvider>);
 }
+
+beforeEach(() => {
+  vi.spyOn(client, 'getHeraldryPalette').mockResolvedValue(PALETTE);
+});
 
 afterEach(() => {
   cleanup();

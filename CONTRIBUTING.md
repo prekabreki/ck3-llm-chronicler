@@ -45,8 +45,6 @@ Two traps worth knowing, both of which have cost real time here:
 - **`npm run build` is stricter than your editor.** It runs `tsc -b` across the test files
   too, so an unchecked index access in a test fails the build while `vitest` is green.
 
-`npm run e2e` (Playwright) is not in CI; it boots a Vite dev server and exercises the shell.
-
 ## How work is tracked
 
 GitHub Issues, via the `gh` CLI.

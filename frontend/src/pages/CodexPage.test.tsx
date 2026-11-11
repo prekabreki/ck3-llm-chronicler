@@ -9,7 +9,40 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { CodexPage } from './CodexPage';
 import { useAppStore } from '../store/appStore';
 import * as client from '../api/client';
-import type { CharacterDetail, CharacterSummary, TrackedResponse } from '../api/types';
+import type {
+  BiographyResponse,
+  CharacterDetail,
+  CharacterSummary,
+  NarrativeQueueResponse,
+  TrackedResponse,
+} from '../api/types';
+
+const PALETTE = {
+  black: [0, 0, 0] as [number, number, number],
+  red: [200, 30, 30] as [number, number, number],
+};
+
+const EMPTY_QUEUE: NarrativeQueueResponse = {
+  queued: [],
+  active: [],
+  recent: [],
+  completed_count: 0,
+  failed_count: 0,
+  avg_duration_ms: null,
+};
+
+const EMPTY_BIO: BiographyResponse = {
+  id: 1,
+  character_id: 100,
+  version: 1,
+  body: '',
+  prompt_template_version: 'biography_v2',
+  provider: 'test',
+  generated_at: '2026-04-30T10:00:00+00:00',
+  events_through_event_id: null,
+  prompt_tokens: null,
+  completion_tokens: null,
+};
 
 const CHARS: CharacterSummary[] = [
   { ck3_id: 100, first_name: 'Alfred', dynasty_name: 'Wessex', birth_date: '0848.10.1', death_date: '0899.10.26', coa_json: null, is_played: false },
@@ -50,6 +83,9 @@ beforeEach(() => {
     activeCampaign: 'Wessex',
     selectedCharacterId: null,
   });
+  vi.spyOn(client, 'getHeraldryPalette').mockResolvedValue(PALETTE);
+  vi.spyOn(client, 'getCharacterBiography').mockResolvedValue(EMPTY_BIO);
+  vi.spyOn(client, 'getNarrativeQueue').mockResolvedValue(EMPTY_QUEUE);
 });
 
 afterEach(() => {
