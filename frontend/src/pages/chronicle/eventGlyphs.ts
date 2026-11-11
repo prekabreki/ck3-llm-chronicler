@@ -17,6 +17,27 @@ export const EVENT_GLYPHS: Record<string, string> = {
   title_lost: '♕',
   war_started: '⚔',
   war_won: '⚔',
+  // Court and camp life: a fleur-de-lis for the household, shared by the
+  // joined/left pair the way the title and war pairs share a glyph.
+  camp_companion_joined: '⚜',
+  camp_companion_left: '⚜',
+  // Union family: the unmarried-partnership mark beside marriage's ⚭.
+  concubine_taken: '⚯',
+  // A finished undertaking, sealed by agreement.
+  contract_completed: '⚖',
+  // The hearth moving with its people.
+  domicile_moved: '⌂',
+  // The seat of rule changing hands — the rook to title's queen.
+  government_changed: '♜',
+  // The spark of an idea a patron pays to pursue.
+  inspiration_sponsored: '✧',
+  // A chosen discipline, marked like a new chapter.
+  lifestyle_committed: '❧',
+  // A mark laid on the character; a boon earned.
+  modifier_acquired: '✚',
+  perk_acquired: '★',
+  // Dynastic radiance.
+  splendor_increased: '☀',
 };
 
 export const EVENT_COLOR_VAR: Record<string, string> = {
@@ -31,6 +52,17 @@ export const EVENT_COLOR_VAR: Record<string, string> = {
   title_lost: 'var(--carmine)',
   war_started: 'var(--carmine)',
   war_won: 'var(--gold-deep)',
+  camp_companion_joined: 'var(--vert)',
+  camp_companion_left: 'var(--ink-soft)',
+  concubine_taken: 'var(--azure)',
+  contract_completed: 'var(--gold-deep)',
+  domicile_moved: 'var(--ink-muted)',
+  government_changed: 'var(--ink-muted)',
+  inspiration_sponsored: 'var(--gold-deep)',
+  lifestyle_committed: 'var(--azure)',
+  modifier_acquired: 'var(--ink-muted)',
+  perk_acquired: 'var(--gold-deep)',
+  splendor_increased: 'var(--gold-deep)',
 };
 
 export function eventCanonicalKey(type: string): string {
