@@ -55,8 +55,6 @@ from chronicler.db.engine import (
 from chronicler.db.registry import (
     get_data_dir,
     get_tracked_character_ids,
-    get_tracked_status,
-    is_character_tracked,
     touch_last_event_at,
 )
 from chronicler.db.repository import (
@@ -117,6 +115,7 @@ from chronicler.save.tick import (
     process_save_pair,
 )
 from chronicler.save.watcher import watch_saves
+from chronicler.tracked_policy import TrackedPolicy
 from chronicler.util.async_pipeline import map_ordered_bounded
 
 # ck3_chronicler-r8l1: how many rakaly parses to run concurrently in the
@@ -656,205 +655,333 @@ async def run_save_ingest(
     2 GB cap dropped saves the ingest worker still needed in
     adventurer-mode smoke).
     """
-    engine = make_engine_for_path(db_path)
-    factory = make_session_factory(engine)
+    await SaveIngestSession(
+        save_dir=save_dir,
+        db_path=db_path,
+        campaign_id=campaign_id,
+        registry_path=registry_path,
+        pattern=pattern,
+        biography_provider=biography_provider,
+        stop_event=stop_event,
+        cache_max_bytes=cache_max_bytes,
+        parse_concurrency=parse_concurrency,
+        event_bus=event_bus,
+        narrative_queue=narrative_queue,
+        auto_import_first_save=auto_import_first_save,
+        on_scheduler_ready=on_scheduler_ready,
+        on_foreign_playthrough=on_foreign_playthrough,
+    ).run()
 
-    # ck3_chronicler-j86v: the GIL-bound melt+decode+parse (~86% of the ~7s
-    # per-save floor) runs in a worker PROCESS so a backlog drain fans across
-    # cores instead of saturating one. Owned for the loop's lifetime; torn
-    # down in the finally block (cancel_futures) so no rakaly grandchild
-    # survives loop exit.
-    #
-    # The mp context is EXPLICITLY spawn (#60). Linux defaults to fork, and a
-    # forked worker inherits every open fd including uvicorn's LISTENING socket
-    # on :8000. Kill the parent ungracefully and the workers are reparented to
-    # init still holding that socket, so the port stays bound by processes that
-    # will never answer a request: the next launch cannot bind, Vite comes up
-    # alone, and every /api call returns a proxy Bad Gateway until someone finds
-    # the strays by hand. One hard kill poisoned every subsequent launch.
-    #
-    # Windows was always spawn, so the worker was already written to survive a
-    # re-import (`parse_save_in_worker` is module-level and its args pickle).
-    # This makes both platforms take the path the code was already designed for.
-    pool_workers = _resolve_parse_pool_workers(parse_concurrency)
-    parse_pool = ProcessPoolExecutor(
-        max_workers=pool_workers, mp_context=multiprocessing.get_context("spawn")
-    )
-    log.info("save-ingest parse pool: %d workers", pool_workers)
 
-    def _is_tracked(character_id: int) -> bool:
-        return is_character_tracked(campaign_id, character_id, registry=registry_path)
+class SaveIngestSession:
+    """One save-ingest loop's explicit state and phases.
 
-    def _is_paused(character_id: int) -> bool:
-        paused, _ = get_tracked_status(campaign_id, character_id, registry=registry_path)
-        return paused
+    Constructing the session builds the engine, parse pool, registry
+    policy, scheduler and save cache; :meth:`startup` establishes the
+    baseline and seeds the backlog; :meth:`run` pumps the producer and
+    consumer until the stop event; :meth:`teardown` shuts the pool,
+    scheduler and engine down in the same order the loop always used.
+    """
 
-    def _get_bumped_at(character_id: int) -> str | None:
-        _, bumped = get_tracked_status(campaign_id, character_id, registry=registry_path)
-        return bumped
+    def __init__(
+        self,
+        *,
+        save_dir: Path,
+        db_path: Path,
+        campaign_id: str,
+        registry_path: Path | None = None,
+        pattern: str | tuple[str, ...] | list[str] = DEFAULT_SAVE_PATTERN,
+        biography_provider=None,  # NarrativeProvider | None
+        stop_event: asyncio.Event | None = None,
+        cache_max_bytes: int = DEFAULT_MAX_CACHE_BYTES,
+        parse_concurrency: int = DEFAULT_PARSE_CONCURRENCY,  # ck3_chronicler-r8l1
+        event_bus: EventBus | None = None,  # ck3_chronicler-ek2
+        narrative_queue: NarrativeQueueState | None = None,  # ck3_chronicler-eev
+        auto_import_first_save: bool = True,  # ck3_chronicler-cij
+        on_scheduler_ready: Callable[[NarrativeScheduler | None], None] | None = None,
+        on_foreign_playthrough: Callable[[str, Path], None] | None = None,
+    ) -> None:
+        self.save_dir = save_dir
+        self.db_path = db_path
+        self.campaign_id = campaign_id
+        self.registry_path = registry_path
+        self.pattern = pattern
+        self.biography_provider = biography_provider
+        self.stop_event = stop_event
+        self.cache_max_bytes = cache_max_bytes
+        self.parse_concurrency = parse_concurrency
+        self.event_bus = event_bus
+        self.narrative_queue = narrative_queue
+        self.auto_import_first_save = auto_import_first_save
+        self.on_foreign_playthrough = on_foreign_playthrough
+        self.engine = make_engine_for_path(db_path)
+        self.factory = make_session_factory(self.engine)
 
-    scheduler: NarrativeScheduler | None = (
-        NarrativeScheduler(
-            factory,
-            biography_provider,
-            campaign_uuid=campaign_id,
-            is_tracked=_is_tracked,
-            is_paused=_is_paused,
-            # ck3_chronicler-gx7b: scheduler-side global-pause gate reads
-            # the same cached helper as the ingest call sites, so the
-            # PUT-toggle handler's cache reset invalidates both.
-            is_globally_paused=_is_llm_paused,
-            get_bumped_at=_get_bumped_at,
-            queue_state=narrative_queue,
+        # ck3_chronicler-j86v: the GIL-bound melt+decode+parse (~86% of the ~7s
+        # per-save floor) runs in a worker PROCESS so a backlog drain fans
+        # across cores instead of saturating one. Owned for the loop's
+        # lifetime; torn down in the finally block (cancel_futures) so no
+        # rakaly grandchild survives loop exit.
+        #
+        # The mp context is EXPLICITLY spawn (#60). Linux defaults to fork,
+        # and a forked worker inherits every open fd including uvicorn's
+        # LISTENING socket on :8000. Kill the parent ungracefully and the
+        # workers are reparented to init still holding that socket, so the
+        # port stays bound by processes that will never answer a request: the
+        # next launch cannot bind, Vite comes up alone, and every /api call
+        # returns a proxy Bad Gateway until someone finds the strays by hand.
+        # One hard kill poisoned every subsequent launch.
+        #
+        # Windows was always spawn, so the worker was already written to
+        # survive a re-import (`parse_save_in_worker` is module-level and its
+        # args pickle). This makes both platforms take the path the code was
+        # already designed for.
+        pool_workers = _resolve_parse_pool_workers(self.parse_concurrency)
+        self.parse_pool = ProcessPoolExecutor(
+            max_workers=pool_workers, mp_context=multiprocessing.get_context("spawn")
         )
-        if biography_provider is not None
-        else None
-    )
-    # ck3_chronicler-fiv6 (was kdf): hand the scheduler back to the
-    # orchestrator so it can stash it on app.state for diagnostics. The
-    # defer/drain endpoints that previously consumed it were removed
-    # post-tbrm.3 along with the local-tier providers.
-    if on_scheduler_ready is not None:
-        try:
-            on_scheduler_ready(scheduler)
-        except Exception:
-            log.exception("on_scheduler_ready callback raised")
+        log.info("save-ingest parse pool: %d workers", pool_workers)
 
-    persist_path = baseline_path_for(db_path)
-    # ck3_chronicler-elll: load_baseline now returns a BaselineLoad
-    # carrying snapshot + forensic fields (generation, persisted_at).
-    # Keep ``persisted_load`` in scope — the boot log line below + the
-    # chronicler_recovering SSE frame consume its forensic fields.
-    persisted_load = load_baseline(persist_path)
-    persisted_baseline = persisted_load.snapshot if persisted_load is not None else None
-    if persisted_load is not None:
-        log.info(
-            "save-ingest baseline loaded: gen=%s persisted_at=%s date=%s chars=%d",
-            persisted_load.generation
-            if persisted_load.generation is not None
-            else "None (legacy v1)",
-            persisted_load.persisted_at
-            if persisted_load.persisted_at is not None
-            else "None (legacy v1)",
-            persisted_load.snapshot.current_date,
-            len(persisted_load.snapshot.characters),
-        )
-    cache = SaveCache(cache_dir_for(get_data_dir(), campaign_id))
-
-    # 4-phase startup. See each helper's docstring; the orchestration
-    # threads `last_snapshot` (the high-water mark) through them.
-    # ck3_chronicler 2026-05-09: a playthrough mismatch on the latest
-    # save in save_dir is NOT a fatal startup error — it's the normal
-    # state when the user has just adopted a campaign for a CK3 game
-    # they haven't started playing yet (the on-disk autosave is a
-    # leftover from a prior CK3 session in a different playthrough).
-    # Previously we crashed save-tail on this and the orchestrator's
-    # _on_done buried the exception silently; symptom was 'tail keeps
-    # turning on/off, nothing in the watcher list' for hours of play.
-    # Now we treat it as 'no usable startup baseline' — the watcher
-    # arms regardless, and once a matching save lands the diff layer's
-    # _is_advance_candidate filter (which already drops mismatched
-    # saves at run-time) silently pivots us onto the new playthrough.
-    # ck3_chronicler-kp8f: each boot phase below does a synchronous rakaly
-    # subprocess + 70 MB json.loads (Phase 1 + Phase 3) or heavy SQL/diff
-    # work (Phase 4). Wrap each in asyncio.to_thread so uvicorn (sharing
-    # the event loop) stays responsive while the drain churns. Pre-fix
-    # the entire drain wall-time blocked /api/* — Bad Gateway on
-    # launch.bat, FE frozen on "the chronicler stirs" for minutes when
-    # the cache had a multi-save backlog.
-    try:
-        current_save_path, verified_current_parse = await asyncio.to_thread(
-            _verify_current_save,
-            save_dir=save_dir,
-            pattern=pattern,
-            factory=factory,
-        )
-    except PlaythroughMismatchError as e:
-        log.warning(
-            "save-tail startup: latest on-disk save is from a different "
-            "playthrough (%s) — likely a leftover autosave from a prior "
-            "CK3 session. Skipping startup baseline; the watcher will pick "
-            "up matching saves once CK3 writes them.",
-            e,
-        )
-        current_save_path, verified_current_parse = None, None
-
-    last_snapshot = _select_starting_baseline(
-        persisted_baseline=persisted_baseline,
-        verified_current_parse=verified_current_parse,
-        cache=cache,
-    )
-
-    # ck3_chronicler-27ov.12 (audit H6/J3): collapse the three divergent
-    # "ingest one cached save" paths into the single live consumer below.
-    # Rather than two bespoke startup drains (_drain_pending_cache +
-    # _catch_up_to_current) that each re-implemented sidecar-skip -> parse ->
-    # pin-gate -> establish/advance -> mark_processed, seed the pipeline queue
-    # with the pre-existing work — the saves a prior run left cached, plus a
-    # freshly-cached copy of the current on-disk save — and let the consumer
-    # drain it through the exact code path live saves take. The pin gate,
-    # sidecar skip, and fresh-DB cij bootstrap now exist in one place (the
-    # consumer). The watcher arms immediately; the backlog drains through the
-    # live pipeline (ck3_chronicler-ylbu).
-    seeded: list[CachedSave] = []
-    pending_cache_count = len(cache.pending())
-    for cached in cache.pending():
-        # ck3_chronicler-2faj: skip foreign saves identifiable from the sidecar
-        # without paying rakaly (~7s/save), but only when we have a baseline to
-        # compare against. The consumer also drops foreign saves — but only
-        # AFTER parsing — so doing it here keeps that cost off the startup
-        # backlog drain. With no baseline we can't tell foreign from own, so
-        # those fall through to the consumer's post-parse pin gate.
-        if (
-            cached.playthrough_id is not None
-            and last_snapshot is not None
-            and last_snapshot.playthrough_id
-            and cached.playthrough_id != last_snapshot.playthrough_id
-        ):
-            log.debug(
-                "skipping cached %s — sidecar says foreign playthrough %s",
-                cached.path.name,
-                cached.playthrough_id,
+        self.policy = TrackedPolicy(self.campaign_id, self.registry_path)
+        self.scheduler: NarrativeScheduler | None = (
+            NarrativeScheduler(
+                self.factory,
+                self.biography_provider,
+                campaign_uuid=self.campaign_id,
+                is_tracked=self.policy.is_tracked,
+                is_paused=self.policy.is_paused,
+                # ck3_chronicler-gx7b: scheduler-side global-pause gate reads
+                # the same cached helper as the ingest call sites, so the
+                # PUT-toggle handler's cache reset invalidates both.
+                is_globally_paused=_is_llm_paused,
+                get_bumped_at=self.policy.bumped_at,
+                queue_state=self.narrative_queue,
             )
-            cache.mark_processed(cached)
-            continue
-        cache.protect(cached.seqno)
-        seeded.append(cached)
-
-    # Freshly cache the current on-disk save so the consumer catches up to it.
-    # Only when it parsed + passed the playthrough verify above — a foreign
-    # leftover or unparseable save is left for the watcher to pick up. Often
-    # the same file as the last cached entry; _advance_baseline's stale-read
-    # guard no-ops that case.
-    if verified_current_parse is not None and current_save_path is not None:
-        cached_current = cache.cache_save(current_save_path)
-        if cached_current is not None:
-            cache.protect(cached_current.seqno)
-            seeded.append(cached_current)
-
-    # ck3_chronicler-elll: bracket the seeded-backlog drain with the
-    # chronicler_recovering / chronicler_recovered SSE frames the AppShell
-    # banner renders. Fires only when there's a surviving baseline to recover
-    # against — fresh adopts (last_snapshot is None) skip the banner. The
-    # recovered frame closes the window with the events-table delta once the
-    # consumer has drained every seeded item (tracked via recovery_remaining
-    # in the consumer loop below).
-    recovery_active = last_snapshot is not None and event_bus is not None
-    recovery_remaining = len(seeded) if recovery_active else 0
-    events_before_recovery: int | None = None
-
-    def _publish_recovered() -> None:
-        nonlocal recovery_active
-        if not recovery_active:
-            return
-        recovery_active = False
-        with session_scope(factory) as session:
-            events_after_recovery = count_events(session)
-        events_ingested = max(0, events_after_recovery - (events_before_recovery or 0))
-        if event_bus is not None:
+            if self.biography_provider is not None
+            else None
+        )
+        # ck3_chronicler-fiv6 (was kdf): hand the scheduler back to the
+        # orchestrator so it can stash it on app.state for diagnostics. The
+        # defer/drain endpoints that previously consumed it were removed
+        # post-tbrm.3 along with the local-tier providers.
+        if on_scheduler_ready is not None:
             try:
-                event_bus.publish(
-                    campaign_id,
+                on_scheduler_ready(self.scheduler)
+            except Exception:
+                log.exception("on_scheduler_ready callback raised")
+
+        self.persist_path = baseline_path_for(db_path)
+        # ck3_chronicler-elll: load_baseline now returns a BaselineLoad
+        # carrying snapshot + forensic fields (generation, persisted_at).
+        # Keep ``persisted_load`` in scope — the boot log line below + the
+        # chronicler_recovering SSE frame consume its forensic fields.
+        self.persisted_load = load_baseline(self.persist_path)
+        self.persisted_baseline = (
+            self.persisted_load.snapshot if self.persisted_load is not None else None
+        )
+        if self.persisted_load is not None:
+            log.info(
+                "save-ingest baseline loaded: gen=%s persisted_at=%s date=%s chars=%d",
+                self.persisted_load.generation
+                if self.persisted_load.generation is not None
+                else "None (legacy v1)",
+                self.persisted_load.persisted_at
+                if self.persisted_load.persisted_at is not None
+                else "None (legacy v1)",
+                self.persisted_load.snapshot.current_date,
+                len(self.persisted_load.snapshot.characters),
+            )
+        self.cache = SaveCache(cache_dir_for(get_data_dir(), self.campaign_id))
+
+        # Startup-phase state; :meth:`startup` populates the rest.
+        self.last_snapshot: SaveSnapshot | None = None
+        self.seeded: list[CachedSave] = []
+        self.pending_cache_count = 0
+        self.recovery_active = False
+        self.recovery_remaining = 0
+        self.events_before_recovery: int | None = None
+        self.pipeline_queue: asyncio.Queue[Any] = asyncio.Queue(maxsize=50)
+        self._drain_sentinel = object()
+
+    async def startup(self) -> None:
+        """Verify the current save, select a baseline, seed the backlog and
+        open/close the recovery window.
+
+        See each helper's docstring; the orchestration threads
+        ``last_snapshot`` (the high-water mark) through them.
+
+        ck3_chronicler 2026-05-09: a playthrough mismatch on the latest
+        save in save_dir is NOT a fatal startup error — it's the normal
+        state when the user has just adopted a campaign for a CK3 game
+        they haven't started playing yet (the on-disk autosave is a
+        leftover from a prior CK3 session in a different playthrough).
+        Previously we crashed save-tail on this and the orchestrator's
+        _on_done buried the exception silently; symptom was 'tail keeps
+        turning on/off, nothing in the watcher list' for hours of play.
+        Now we treat it as 'no usable startup baseline' — the watcher
+        arms regardless, and once a matching save lands the diff layer's
+        _is_advance_candidate filter (which already drops mismatched
+        saves at run-time) silently pivots us onto the new playthrough.
+
+        ck3_chronicler-kp8f: each boot phase below does a synchronous rakaly
+        subprocess + 70 MB json.loads (Phase 1 + Phase 3) or heavy SQL/diff
+        work (Phase 4). Wrap each in asyncio.to_thread so uvicorn (sharing
+        the event loop) stays responsive while the drain churns. Pre-fix
+        the entire drain wall-time blocked /api/* — Bad Gateway on
+        launch.bat, FE frozen on "the chronicler stirs" for minutes when
+        the cache had a multi-save backlog.
+        """
+        try:
+            current_save_path, verified_current_parse = await asyncio.to_thread(
+                _verify_current_save,
+                save_dir=self.save_dir,
+                pattern=self.pattern,
+                factory=self.factory,
+            )
+        except PlaythroughMismatchError as e:
+            log.warning(
+                "save-tail startup: latest on-disk save is from a different "
+                "playthrough (%s) — likely a leftover autosave from a prior "
+                "CK3 session. Skipping startup baseline; the watcher will pick "
+                "up matching saves once CK3 writes them.",
+                e,
+            )
+            current_save_path, verified_current_parse = None, None
+
+        self.last_snapshot = _select_starting_baseline(
+            persisted_baseline=self.persisted_baseline,
+            verified_current_parse=verified_current_parse,
+            cache=self.cache,
+        )
+
+        # ck3_chronicler-27ov.12 (audit H6/J3): collapse the three divergent
+        # "ingest one cached save" paths into the single live consumer below.
+        # Rather than two bespoke startup drains (_drain_pending_cache +
+        # _catch_up_to_current) that each re-implemented sidecar-skip -> parse ->
+        # pin-gate -> establish/advance -> mark_processed, seed the pipeline
+        # queue with the pre-existing work — the saves a prior run left cached,
+        # plus a freshly-cached copy of the current on-disk save — and let the
+        # consumer drain it through the exact code path live saves take. The pin
+        # gate, sidecar skip, and fresh-DB cij bootstrap now exist in one place
+        # (the consumer). The watcher arms immediately; the backlog drains
+        # through the live pipeline (ck3_chronicler-ylbu).
+        seeded: list[CachedSave] = []
+        pending_cache_count = len(self.cache.pending())
+        for cached in self.cache.pending():
+            # ck3_chronicler-2faj: skip foreign saves identifiable from the
+            # sidecar without paying rakaly (~7s/save), but only when we have a
+            # baseline to compare against. The consumer also drops foreign saves
+            # — but only AFTER parsing — so doing it here keeps that cost off
+            # the startup backlog drain. With no baseline we can't tell foreign
+            # from own, so those fall through to the consumer's post-parse pin
+            # gate.
+            if (
+                cached.playthrough_id is not None
+                and self.last_snapshot is not None
+                and self.last_snapshot.playthrough_id
+                and cached.playthrough_id != self.last_snapshot.playthrough_id
+            ):
+                log.debug(
+                    "skipping cached %s — sidecar says foreign playthrough %s",
+                    cached.path.name,
+                    cached.playthrough_id,
+                )
+                self.cache.mark_processed(cached)
+                continue
+            self.cache.protect(cached.seqno)
+            seeded.append(cached)
+
+        # Freshly cache the current on-disk save so the consumer catches up to
+        # it. Only when it parsed + passed the playthrough verify above — a
+        # foreign leftover or unparseable save is left for the watcher to pick
+        # up. Often the same file as the last cached entry; _advance_baseline's
+        # stale-read guard no-ops that case.
+        if verified_current_parse is not None and current_save_path is not None:
+            cached_current = self.cache.cache_save(current_save_path)
+            if cached_current is not None:
+                self.cache.protect(cached_current.seqno)
+                seeded.append(cached_current)
+
+        self.seeded = seeded
+        self.pending_cache_count = pending_cache_count
+
+        # ck3_chronicler-elll: bracket the seeded-backlog drain with the
+        # chronicler_recovering / chronicler_recovered SSE frames the AppShell
+        # banner renders. Fires only when there's a surviving baseline to
+        # recover against — fresh adopts (last_snapshot is None) skip the
+        # banner. The recovered frame closes the window with the events-table
+        # delta once the consumer has drained every seeded item (tracked via
+        # recovery_remaining in the consumer loop below).
+        self.recovery_active = self.last_snapshot is not None and self.event_bus is not None
+        self.recovery_remaining = len(seeded) if self.recovery_active else 0
+
+        if self.recovery_active and self.event_bus is not None:
+            try:
+                self.event_bus.publish(
+                    self.campaign_id,
+                    {
+                        "kind": "chronicler_recovering",
+                        "baseline_persisted_at": (
+                            self.persisted_load.persisted_at
+                            if self.persisted_load is not None
+                            else None
+                        ),
+                        "baseline_date": self.last_snapshot.current_date,
+                        "baseline_generation": (
+                            self.persisted_load.generation
+                            if self.persisted_load is not None
+                            else None
+                        ),
+                        "pending_cache_count": self.pending_cache_count,
+                    },
+                )
+            except Exception:
+                log.exception("chronicler_recovering publish failed; continuing")
+            log.info(
+                "save-ingest recovering: baseline date=%s pending_cache=%d",
+                self.last_snapshot.current_date,
+                self.pending_cache_count,
+            )
+            # Snapshot the events row count so _publish_recovered can compute
+            # the delta once the seeded backlog drains.
+            with session_scope(self.factory) as session:
+                self.events_before_recovery = count_events(session)
+            # No seeded backlog (baseline but nothing on disk / all cache
+            # foreign): close the recovery window immediately so the banner
+            # doesn't hang.
+            if self.recovery_remaining == 0:
+                self._publish_recovered()
+
+        # ck3_chronicler-xy69: re-schedule death-biography work lost when the
+        # chronicler last exited (in-process queue_state evaporates on
+        # shutdown).
+        if self.scheduler is not None:
+            _startup_catchup_scan(
+                factory=self.factory,
+                scheduler=self.scheduler,
+                campaign_id=self.campaign_id,
+                registry_path=self.registry_path,
+            )
+
+        log.info(
+            "starting save-ingest loop: campaign=%s save_dir=%s pattern=%r biography=%s",
+            self.campaign_id,
+            self.save_dir,
+            self.pattern,
+            self.biography_provider.name if self.biography_provider is not None else "disabled",
+        )
+
+    def _publish_recovered(self) -> None:
+        if not self.recovery_active:
+            return
+        self.recovery_active = False
+        with session_scope(self.factory) as session:
+            events_after_recovery = count_events(session)
+        events_ingested = max(0, events_after_recovery - (self.events_before_recovery or 0))
+        if self.event_bus is not None:
+            try:
+                self.event_bus.publish(
+                    self.campaign_id,
                     {"kind": "chronicler_recovered", "events_ingested": events_ingested},
                 )
             except Exception:
@@ -864,92 +991,41 @@ async def run_save_ingest(
             events_ingested,
         )
 
-    if recovery_active and event_bus is not None:
+    def _publish_cache_state(self) -> None:
+        """ck3_chronicler-7w5: surface SaveCache observability over the
+        SSE bus so the v0.7 Save-tail page can show ingestion lag +
+        the lossy-GC banner. Failures swallowed — observability is
+        best-effort and must never break ingest."""
+        if self.event_bus is None:
+            return
         try:
-            event_bus.publish(
-                campaign_id,
-                {
-                    "kind": "chronicler_recovering",
-                    "baseline_persisted_at": (
-                        persisted_load.persisted_at if persisted_load is not None else None
-                    ),
-                    "baseline_date": last_snapshot.current_date,
-                    "baseline_generation": (
-                        persisted_load.generation if persisted_load is not None else None
-                    ),
-                    "pending_cache_count": pending_cache_count,
-                },
+            self.event_bus.publish(
+                self.campaign_id,
+                {"kind": "cache_state", **self.cache.snapshot()},
             )
         except Exception:
-            log.exception("chronicler_recovering publish failed; continuing")
-        log.info(
-            "save-ingest recovering: baseline date=%s pending_cache=%d",
-            last_snapshot.current_date,
-            pending_cache_count,
-        )
-        # Snapshot the events row count so _publish_recovered can compute the
-        # delta once the seeded backlog drains.
-        with session_scope(factory) as session:
-            events_before_recovery = count_events(session)
-        # No seeded backlog (baseline but nothing on disk / all cache foreign):
-        # close the recovery window immediately so the banner doesn't hang.
-        if recovery_remaining == 0:
-            _publish_recovered()
-
-    # ck3_chronicler-xy69: re-schedule death-biography work lost when the
-    # chronicler last exited (in-process queue_state evaporates on shutdown).
-    if scheduler is not None:
-        _startup_catchup_scan(
-            factory=factory,
-            scheduler=scheduler,
-            campaign_id=campaign_id,
-            registry_path=registry_path,
-        )
-
-    log.info(
-        "starting save-ingest loop: campaign=%s save_dir=%s pattern=%r biography=%s",
-        campaign_id,
-        save_dir,
-        pattern,
-        biography_provider.name if biography_provider is not None else "disabled",
-    )
+            log.exception("event_bus.publish failed for cache_state")
 
     # ck3_chronicler-p1h: producer/consumer split. Watcher does only the
     # fast path (cache_save + enqueue) — guaranteed never to block on
     # rakaly or DB work, so it can keep up with arbitrarily fast CK3
     # autosave rotation. Consumer drains the queue at its own pace,
-    # parses + diffs + ingests + GCs. Bounded queue (size 50) gives
+    # parses + diffs + ingests + GCs. The bounded queue (size 50) gives
     # graceful back-pressure: if the consumer falls way behind the
     # producer's await queue.put() yields without dropping events.
-    pipeline_queue: asyncio.Queue[Any] = asyncio.Queue(maxsize=50)
-    _DRAIN_SENTINEL = object()
-
-    def _publish_cache_state() -> None:
-        """ck3_chronicler-7w5: surface SaveCache observability over the
-        SSE bus so the v0.7 Save-tail page can show ingestion lag +
-        the lossy-GC banner. Failures swallowed — observability is
-        best-effort and must never break ingest."""
-        if event_bus is None:
-            return
-        try:
-            event_bus.publish(
-                campaign_id,
-                {"kind": "cache_state", **cache.snapshot()},
-            )
-        except Exception:
-            log.exception("event_bus.publish failed for cache_state")
-
-    async def _producer() -> None:
+    async def _producer(self) -> None:
         try:
             # ck3_chronicler-27ov.12: feed the seeded startup backlog
             # (prior-run cached saves + the current on-disk save) before
             # arming the watcher, so the consumer drains it through the
             # single live ingest path. Each seeded seqno was protected at
             # seed time; the consumer's mark_processed releases it.
-            for cached in seeded:
-                await pipeline_queue.put(cached)
-            async for evt in watch_saves(save_dir, pattern=pattern, stop_event=stop_event):
-                cached = cache.cache_save(evt.path)
+            for cached in self.seeded:
+                await self.pipeline_queue.put(cached)
+            async for evt in watch_saves(
+                self.save_dir, pattern=self.pattern, stop_event=self.stop_event
+            ):
+                cached = self.cache.cache_save(evt.path)
                 if cached is None:
                     continue
                 # ck3_chronicler-5x47: shield this seqno from gc_oldest the
@@ -959,13 +1035,13 @@ async def run_save_ingest(
                 # the gc_oldest call after each consumer iteration can
                 # drop the next-pending file out from under the producer's
                 # backlog when the cap is exceeded.
-                cache.protect(cached.seqno)
-                _publish_cache_state()
-                await pipeline_queue.put(cached)
+                self.cache.protect(cached.seqno)
+                self._publish_cache_state()
+                await self.pipeline_queue.put(cached)
         finally:
-            await pipeline_queue.put(_DRAIN_SENTINEL)
+            await self.pipeline_queue.put(self._drain_sentinel)
 
-    async def _parse_cached(cached):
+    async def _parse_cached(self, cached):
         # ck3_chronicler-j86v: melt+decode+parse run in a worker PROCESS so
         # the GIL-bound decode (~50% of the ~7s floor) fans across cores
         # instead of serializing onto the single ingest core under the GIL.
@@ -976,9 +1052,11 @@ async def run_save_ingest(
         # correctness-first — cache + invalidate-on-track if it shows up in the
         # drain profile. Staleness between dispatch and consume is acceptable:
         # a missing extraction leaves the column intact and the next save catches up.
-        tracked_ids = frozenset(get_tracked_character_ids(campaign_id, registry=registry_path))
+        tracked_ids = frozenset(
+            get_tracked_character_ids(self.campaign_id, registry=self.registry_path)
+        )
         try:
-            return await _dispatch_parse(parse_pool, cached.path, tracked_ids)
+            return await _dispatch_parse(self.parse_pool, cached.path, tracked_ids)
         except (RakalyError, OSError) as e:
             log.warning("rakaly failed for %s: %s", cached.path.name, e)
             return None
@@ -986,14 +1064,13 @@ async def run_save_ingest(
             log.exception("parse worker failed for %s", cached.path.name)
             return None
 
-    async def _consume_one(cached, parsed) -> None:
+    async def consume_one(self, cached, parsed) -> None:
         """Ingest a single parsed save (one consumer-loop item).
 
         Extracted from the consumer loop body (ck3_chronicler-27ov.9,
         audit H5) so the loop can guard each item individually — one bad
         save must skip that save, never kill the consumer.
         """
-        nonlocal last_snapshot
         # ck3_chronicler-2faj: same sidecar short-circuit as the startup
         # drain — drop a seqno we already know is foreign. Now applied
         # after the parse (the parse is dispatched before we get here),
@@ -1001,21 +1078,21 @@ async def run_save_ingest(
         # the live tail is single-playthrough and never hits this.
         if (
             cached.playthrough_id is not None
-            and last_snapshot is not None
-            and last_snapshot.playthrough_id
-            and cached.playthrough_id != last_snapshot.playthrough_id
+            and self.last_snapshot is not None
+            and self.last_snapshot.playthrough_id
+            and cached.playthrough_id != self.last_snapshot.playthrough_id
         ):
             log.debug(
                 "skipping cached %s — sidecar says foreign playthrough %s",
                 cached.path.name,
                 cached.playthrough_id,
             )
-            cache.mark_processed(cached)
-            _publish_cache_state()
+            self.cache.mark_processed(cached)
+            self._publish_cache_state()
             return
         if parsed is None:
-            cache.mark_processed(cached)
-            _publish_cache_state()
+            self.cache.mark_processed(cached)
+            self._publish_cache_state()
             return
         # ck3_chronicler-j86v: _parse_cached now returns the SaveSnapshot only
         # (the parse worker resolved tracked extractions into snap.tracked_*).
@@ -1025,7 +1102,7 @@ async def run_save_ingest(
         # processed below deletes both files — but covers the case
         # where the process exits between parse and mark_processed).
         if snap.playthrough_id:
-            cache.tag_playthrough(cached, snap.playthrough_id)
+            self.cache.tag_playthrough(cached, snap.playthrough_id)
 
         # ck3_chronicler 2026-05-09: when last_snapshot is None we are
         # about to establish baseline from this save. Refuse to do so
@@ -1036,9 +1113,9 @@ async def run_save_ingest(
         # current playthrough. _is_advance_candidate already does this
         # for the steady-state path; the bootstrap path was missing
         # the same gate.
-        if last_snapshot is None:
+        if self.last_snapshot is None:
             try:
-                with session_scope(factory) as session:
+                with session_scope(self.factory) as session:
                     assert_playthrough_or_pin(
                         session,
                         observed=snap.playthrough_id,
@@ -1053,11 +1130,11 @@ async def run_save_ingest(
                     cached.path.name,
                     e,
                 )
-                cache.mark_processed(cached)
-                _publish_cache_state()
+                self.cache.mark_processed(cached)
+                self._publish_cache_state()
                 return
 
-        if last_snapshot is None:
+        if self.last_snapshot is None:
             # ck3_chronicler-qtz: re-apply the cij gates here so the
             # watch-and-adopt arrival path runs auto-import (seeds
             # tracked_characters + vanilla memories) instead of just
@@ -1067,7 +1144,7 @@ async def run_save_ingest(
             # save lands, and the diff layer's tracked_filter drops
             # every subsequent event until the user runs
             # `chronicler auto-track` manually.
-            if auto_import_first_save and _campaign_db_is_fresh(factory):
+            if self.auto_import_first_save and _campaign_db_is_fresh(self.factory):
                 log.info(
                     "first snapshot via watcher on fresh DB; running auto-import on %s",
                     cached.path.name,
@@ -1077,19 +1154,19 @@ async def run_save_ingest(
                 # ~40k-row upsert loop. Run it off the uvicorn loop like the
                 # startup gate does (kp8f) so /api/* and SSE heartbeats stay
                 # responsive.
-                seeded = await asyncio.to_thread(
+                seeded_snapshot = await asyncio.to_thread(
                     _maybe_auto_import_first_save,
                     save_path=cached.path,
                     parsed_snap=snap,
-                    factory=factory,
-                    persist_path=persist_path,
-                    campaign_id=campaign_id,
-                    registry_path=registry_path,
+                    factory=self.factory,
+                    persist_path=self.persist_path,
+                    campaign_id=self.campaign_id,
+                    registry_path=self.registry_path,
                 )
-                if seeded is not None:
-                    last_snapshot = seeded
-                    cache.mark_processed(cached)
-                    _publish_cache_state()
+                if seeded_snapshot is not None:
+                    self.last_snapshot = seeded_snapshot
+                    self.cache.mark_processed(cached)
+                    self._publish_cache_state()
                     return
                 # Auto-import failed; fall through to silent baseline so
                 # at least the watcher arms with a valid high-water mark.
@@ -1099,7 +1176,7 @@ async def run_save_ingest(
                 snap.current_date,
                 len(snap.characters),
             )
-            last_snapshot = snap
+            self.last_snapshot = snap
             # ck3_chronicler 2026-05-09: also flush the registry
             # overview so the Library card reflects the current
             # in-game date (and player identity) even on the very
@@ -1110,12 +1187,12 @@ async def run_save_ingest(
             # working".
             _persist_per_save_state(
                 snap,
-                campaign_id=campaign_id,
-                registry_path=registry_path,
-                persist_path=persist_path,
+                campaign_id=self.campaign_id,
+                registry_path=self.registry_path,
+                persist_path=self.persist_path,
             )
-            cache.mark_processed(cached)
-            _publish_cache_state()
+            self.cache.mark_processed(cached)
+            self._publish_cache_state()
             return
 
         # ck3_chronicler-27ov.3 (audit H7): _advance_baseline is a
@@ -1125,37 +1202,36 @@ async def run_save_ingest(
         # startup phases already wrap it in to_thread (proven thread-safe);
         # calling it synchronously here froze /api/* and SSE heartbeats
         # (tuned to 2s) whenever a backlog drained.
-        last_snapshot = await asyncio.to_thread(
+        self.last_snapshot = await asyncio.to_thread(
             _advance_baseline,
             snap,
-            last_snapshot=last_snapshot,
-            factory=factory,
-            scheduler=scheduler,
-            registry_path=registry_path,
-            campaign_id=campaign_id,
+            last_snapshot=self.last_snapshot,
+            factory=self.factory,
+            scheduler=self.scheduler,
+            registry_path=self.registry_path,
+            campaign_id=self.campaign_id,
             save_path_name=cached.path.name,
-            persist_path=persist_path,
-            event_bus=event_bus,
-            on_foreign_playthrough=on_foreign_playthrough,
+            persist_path=self.persist_path,
+            event_bus=self.event_bus,
+            on_foreign_playthrough=self.on_foreign_playthrough,
         )
-        cache.mark_processed(cached)
-        cache.gc_oldest(cache_max_bytes)
-        _publish_cache_state()
+        self.cache.mark_processed(cached)
+        self.cache.gc_oldest(self.cache_max_bytes)
+        self._publish_cache_state()
 
-    async def _consumer() -> None:
-        nonlocal recovery_remaining
+    async def _consumer(self) -> None:
         # ck3_chronicler-r8l1: parse up to `parse_concurrency` saves at once
         # (each rakaly run is an independent, side-effect-free subprocess, so
         # N overlap in the OS — draining the ~80%/9.5s bottleneck N-ways)
         # while map_ordered_bounded hands results to this loop in strict
-        # pull (= save) order. The diff/baseline tail in _consume_one stays
+        # pull (= save) order. The diff/baseline tail in consume_one stays
         # exactly as serial and in-order as the old one-at-a-time loop, so
         # events are byte-identical — only the parse stage parallelises.
         async for cached, parsed in map_ordered_bounded(
-            pipeline_queue,
-            _DRAIN_SENTINEL,
-            _parse_cached,
-            concurrency=parse_concurrency,
+            self.pipeline_queue,
+            self._drain_sentinel,
+            self._parse_cached,
+            concurrency=self.parse_concurrency,
         ):
             # ck3_chronicler-27ov.9 (audit H5): per-item guard. The module
             # contract is "never stop on bad data" — a save that fails
@@ -1166,40 +1242,46 @@ async def run_save_ingest(
             # seqnos and blocking on the full queue — a half-dead pipeline
             # that looked alive in the UI.
             try:
-                await _consume_one(cached, parsed)
+                await self.consume_one(cached, parsed)
             except Exception:
                 log.exception("ingest failed for %s; skipping this save", cached.path.name)
                 # Idempotent — releases the 5x47 protect and deletes the
                 # cached file even when the body got partway there already.
-                cache.mark_processed(cached)
-                _publish_cache_state()
+                self.cache.mark_processed(cached)
+                self._publish_cache_state()
             finally:
                 # ck3_chronicler-27ov.12: a seeded item is "drained"
                 # whether it ingested, was skipped (foreign/parse-fail), or
                 # errored — count it toward closing the recovery window
                 # either way. Live items after recovery no-op this guard.
-                if recovery_active and recovery_remaining > 0:
-                    recovery_remaining -= 1
-                    if recovery_remaining == 0:
-                        _publish_recovered()
+                if self.recovery_active and self.recovery_remaining > 0:
+                    self.recovery_remaining -= 1
+                    if self.recovery_remaining == 0:
+                        self._publish_recovered()
 
-    # ck3_chronicler-27ov.9 (audit H5): TaskGroup, not gather — if one task
-    # still dies (the per-item guard makes that rare), the sibling is
-    # cancelled with it instead of being orphaned.
-    try:
-        async with asyncio.TaskGroup() as tg:
-            tg.create_task(_producer())
-            tg.create_task(_consumer())
-    finally:
-        # ck3_chronicler-j86v: tear the parse pool down on stop_event / Ctrl+C /
-        # normal exit. Python 3.11 cancel_futures cancels NOT-YET-STARTED tasks;
-        # a worker mid-melt finishes its current save (bounded by the rakaly
-        # timeout) — so no rakaly grandchild outlives the loop. Verified
-        # empirically (5 tasks / 2 workers, teardown mid-flight): in-flight
-        # workers reap their blocking subprocess.run rakaly child before
-        # exiting, queued tasks cancel, and zero rakaly processes survive.
-        parse_pool.shutdown(wait=True, cancel_futures=True)
-        if scheduler is not None:
+    async def run(self) -> None:
+        await self.startup()
+        # ck3_chronicler-27ov.9 (audit H5): TaskGroup, not gather — if one
+        # task still dies (the per-item guard makes that rare), the sibling
+        # is cancelled with it instead of being orphaned.
+        try:
+            async with asyncio.TaskGroup() as tg:
+                tg.create_task(self._producer())
+                tg.create_task(self._consumer())
+        finally:
+            await self.teardown()
+
+    async def teardown(self) -> None:
+        # ck3_chronicler-j86v: tear the parse pool down on stop_event /
+        # Ctrl+C / normal exit. Python 3.11 cancel_futures cancels
+        # NOT-YET-STARTED tasks; a worker mid-melt finishes its current save
+        # (bounded by the rakaly timeout) — so no rakaly grandchild outlives
+        # the loop. Verified empirically (5 tasks / 2 workers, teardown
+        # mid-flight): in-flight workers reap their blocking subprocess.run
+        # rakaly child before exiting, queued tasks cancel, and zero rakaly
+        # processes survive.
+        self.parse_pool.shutdown(wait=True, cancel_futures=True)
+        if self.scheduler is not None:
             # ck3_chronicler-91hh: last-chance death-bio catch-up on graceful
             # shutdown — recover any DB-recorded death that lacks a scheduled
             # biography now, instead of waiting for the next launch's
@@ -1207,15 +1289,15 @@ async def run_save_ingest(
             # prevent the scheduler drain or the rest of teardown.
             try:
                 drain_for_campaign(
-                    factory=factory,
-                    scheduler=scheduler,
-                    campaign_id=campaign_id,
-                    registry_path=registry_path,
+                    factory=self.factory,
+                    scheduler=self.scheduler,
+                    campaign_id=self.campaign_id,
+                    registry_path=self.registry_path,
                 )
             except Exception:
                 log.exception("91hh teardown drain_for_campaign failed")
-            await scheduler.drain()
-        engine.dispose()
+            await self.scheduler.drain()
+        self.engine.dispose()
         # ck3_chronicler-tail-pip: publish a save_tail_stopped frame so the
         # AppShell pip can flip from --live to "Tail unavailable" without
         # waiting for the SSE channel to error out 3 times. Without this,
@@ -1225,12 +1307,12 @@ async def run_save_ingest(
         # though no saves are being watched. Best-effort: failures are
         # swallowed, the existing onerror dead-threshold remains the
         # backstop for pathological cases (SSE bus crash, process kill).
-        if event_bus is not None:
+        if self.event_bus is not None:
             try:
-                event_bus.publish(
-                    campaign_id,
+                self.event_bus.publish(
+                    self.campaign_id,
                     {"kind": "save_tail_stopped", "stopped_at": _now_iso()},
                 )
             except Exception:
                 log.exception("event_bus.publish failed for save_tail_stopped")
-        log.info("save-ingest loop stopped: campaign=%s", campaign_id)
+        log.info("save-ingest loop stopped: campaign=%s", self.campaign_id)

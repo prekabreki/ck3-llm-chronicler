@@ -16,11 +16,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import time
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal, TypeVar
+from typing import Literal
 
 from sqlalchemy.orm import Session
 
@@ -39,18 +38,12 @@ from chronicler.tailer.parser import (
     ParseResult,
 )
 from chronicler.tailer.watcher import tail
+from chronicler.tracked_policy import (
+    REGISTRY_PREDICATE_TTL_SECONDS,
+    TrackedPolicy,
+    ttl_cached,
+)
 from chronicler.util.dates import parse_ck3_long_date
-
-_T = TypeVar("_T")
-
-# F008 / 81v: how long to trust a cached registry-predicate result before
-# re-querying. Two seconds: the user adds tracked characters / suppressions
-# on a human timescale via `chronicler track` from another terminal; a 2s
-# lag before the tail picks up the change is imperceptible. A typical
-# debug_log tail fires hundreds of CHRONICLER lines per minute, so even
-# this short TTL collapses ~99% of the registry-DB open/close churn.
-_REGISTRY_PREDICATE_TTL_SECONDS = 2.0
-
 
 log = logging.getLogger(__name__)
 
@@ -68,25 +61,6 @@ class ProcessResult:
     event_id: int | None = None
     quarantine_id: int | None = None
     suppressed_kind: str | None = None
-
-
-def _ttl_cached(fn: Callable[..., _T], *, ttl_seconds: float) -> Callable[..., _T]:
-    """Wrap ``fn`` so identical-argument calls within ``ttl_seconds`` reuse the
-    last result. Uses :func:`time.monotonic` so wall-clock changes can't
-    expire the cache early. Argument tuples must be hashable.
-    """
-    cache: dict[tuple[Any, ...], tuple[float, _T]] = {}
-
-    def _check(*args: Any) -> _T:
-        now = time.monotonic()
-        cached = cache.get(args)
-        if cached is not None and now - cached[0] < ttl_seconds:
-            return cached[1]
-        result = fn(*args)
-        cache[args] = (now, result)
-        return result
-
-    return _check
 
 
 def _ingest_parsed(
@@ -233,11 +207,7 @@ async def run_ingest(
     gate lands. Pass ``None`` (the ``--no-biography`` CLI flag does
     this) to skip biography generation entirely.
     """
-    from chronicler.db.registry import (
-        get_tracked_status,
-        is_character_tracked,
-        is_kind_suppressed,
-    )
+    from chronicler.db.registry import is_kind_suppressed
 
     engine = make_engine_for_path(db_path)
     factory = make_session_factory(engine)
@@ -249,41 +219,22 @@ async def run_ingest(
     # per minute. The cache still re-reads every TTL seconds so live
     # `chronicler track` / `chronicler suppress-quarantine` from another
     # terminal still take effect within ~2s.
-    _tracked_cached = _ttl_cached(
-        lambda character_id: is_character_tracked(
-            campaign_id, character_id, registry=registry_path
-        ),
-        ttl_seconds=_REGISTRY_PREDICATE_TTL_SECONDS,
-    )
-    _suppressed_cached = _ttl_cached(
+    policy = TrackedPolicy(campaign_id, registry_path)
+    _suppressed_cached = ttl_cached(
         lambda event_kind: is_kind_suppressed(campaign_id, event_kind, registry=registry_path),
-        ttl_seconds=_REGISTRY_PREDICATE_TTL_SECONDS,
+        ttl_seconds=REGISTRY_PREDICATE_TTL_SECONDS,
     )
-
-    def _is_tracked(character_id: int) -> bool:
-        return _tracked_cached(character_id)
 
     def _is_suppressed(event_kind: str | None) -> bool:
         return _suppressed_cached(event_kind)
-
-    # ck3_chronicler-t2v5: paused/bumped lookup. Not TTL-cached because
-    # the user expects Pause/Resume/Bump from the Tracked page to take
-    # effect on the next event tick — a 2s cache would feel laggy.
-    def _is_paused(character_id: int) -> bool:
-        paused, _ = get_tracked_status(campaign_id, character_id, registry=registry_path)
-        return paused
-
-    def _get_bumped_at(character_id: int) -> str | None:
-        _, bumped = get_tracked_status(campaign_id, character_id, registry=registry_path)
-        return bumped
 
     scheduler: BiographyScheduler | None = (
         BiographyScheduler(
             factory,
             biography_provider,
-            is_tracked=_is_tracked,
-            is_paused=_is_paused,
-            get_bumped_at=_get_bumped_at,
+            is_tracked=policy.is_tracked,
+            is_paused=policy.is_paused,
+            get_bumped_at=policy.bumped_at,
         )
         if biography_provider is not None
         else None
