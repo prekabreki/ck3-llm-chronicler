@@ -1,13 +1,12 @@
-"""ck3_chronicler-cs1o: prose-repo artifact I/O shared by both narrative
-transports.
+"""ck3_chronicler-cs1o: prose-repo artifact I/O shared by every backend.
 
 The prose repo is the system of record regardless of WHO generated the
 text — every briefing + biography pair lands on disk under
 ``briefings/<campaign>/`` + ``biographies/<campaign>/`` and is
 git-committed, whether the prose came from ``claude --print``
-(ClaudeCodeProvider) or the direct Messages API (AnthropicProvider).
-This module is the extraction of that side-effect machinery out of
-claude_code.py so the two transports cannot drift.
+(ClaudeCodeProvider) or an API transport. Issue #30 moved the orchestration
+of this machinery into :mod:`chronicler.narrative.runner`; the transports
+no longer touch it, and this module holds the primitives the runner uses.
 
 Everything here was moved verbatim from claude_code.py (tbrm/0224/cj2f/
 sezy/vcv2 lineage — original issue tags preserved on each function);
@@ -418,6 +417,7 @@ async def git_commit_biography(
     campaign_uuid: str,
     version: int,
     model: str,
+    subject: str | None = None,
 ) -> None:
     """ck3_chronicler-cj2f: stage and commit the briefing + biography
     pair in the prose repo so each generation lands as a discrete
@@ -485,7 +485,8 @@ async def git_commit_biography(
                 return
 
             message = (
-                f"biography: {character_id} v{version} (campaign={campaign_uuid}, model={model})"
+                f"{subject or f'biography: {character_id}'} v{version} "
+                f"(campaign={campaign_uuid}, model={model})"
             )
             commit_argv: tuple[str, ...] = (
                 "commit",

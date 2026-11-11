@@ -73,21 +73,7 @@ from chronicler.narrative.model_resolution import (
     narrative_effort as _narrative_effort,
 )
 from chronicler.narrative.prose_io import (
-    BRIEFING_WRAPPER_INSTRUCTION,
-    _missing_prose_message,
-    render_briefing_markdown,
-)
-from chronicler.narrative.prose_io import (
-    briefing_paths as _briefing_paths,
-)
-from chronicler.narrative.prose_io import (
-    format_attribution_footer as _format_attribution_footer,
-)
-from chronicler.narrative.prose_io import (
     get_prose_repo_path as _get_prose_repo_path,
-)
-from chronicler.narrative.prose_io import (
-    git_commit_biography as _git_commit_biography,
 )
 from chronicler.narrative.prose_io import (
     subprocess_creationflags as _subprocess_creationflags,
@@ -475,9 +461,9 @@ class ClaudeCodeProvider(NarrativeProvider):
         repo's ``CLAUDE.md``, which is why the voice file never reached
         the model on this transport.
         """
-        # Issue #21: one shared constant across all three transports, so
-        # the output contract can't drift per backend.
-        prompt = BRIEFING_WRAPPER_INSTRUCTION + briefing_text
+        # Issue #30: the runner hands over the exact user turn
+        # (wrapper + briefing) so this transport ships bytes verbatim.
+        prompt = briefing_text
         argv = [
             self._bin,
             "--print",
@@ -593,76 +579,18 @@ class ClaudeCodeProvider(NarrativeProvider):
 
         return stdout
 
-    async def _persist_artifacts(
-        self,
-        *,
-        bio_path: Path,
-        body: str,
-        rel_brief: str,
-        rel_bio: str,
-        character_id: str,
-        campaign_uuid: str,
-        version: int,
-        model: str,
-        input_tokens: int | None,
-        output_tokens: int | None,
-    ) -> None:
-        """Write the biography file, append the attribution footer, and
-        git-commit the briefing + biography pair."""
-        # ck3_chronicler-l7rk: the model wrote nothing (no tools), so the
-        # provider persists the on-disk artifact itself — parity with the
-        # original agentic path's on-disk artifact + git commit.
-        bio_path.write_text(body + "\n", encoding="utf-8")
-
-        # ck3_chronicler-vcv2-followup (2026-05-08): append a short
-        # attribution footer to the biography file so the model + token
-        # counts are visible alongside the prose on disk + in git diffs
-        # without needing the SPA. The DB row carries the same token
-        # numbers in prompt_tokens / completion_tokens, but those aren't
-        # surfaced anywhere a user reading the prose can see them. Body
-        # in memory (returned in NarrativeResponse) stays bare prose so
-        # the persisted Biography.body column doesn't double-store the
-        # footer.
-        footer = _format_attribution_footer(
-            model=model,
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-        )
-        try:
-            with bio_path.open("a", encoding="utf-8") as fh:
-                fh.write(footer)
-        except OSError:
-            log.exception(
-                "claude_code: failed to append attribution footer to %s; "
-                "biography body is unaffected, just the on-disk metadata trail",
-                bio_path,
-            )
-
-        # ck3_chronicler-cj2f: stage + commit the briefing + biography
-        # pair so each generation lands as a discrete versioned artifact.
-        # The prose-repo CLAUDE.md tells Claude Code NOT to commit
-        # itself ("the chronicler tool commits"); honouring that is
-        # this provider's responsibility. Best-effort — git failures
-        # log a warning and are swallowed by _git_commit_biography.
-        await _git_commit_biography(
-            prose_repo=self._prose_repo,
-            rel_brief=rel_brief,
-            rel_bio=rel_bio,
-            character_id=character_id,
-            campaign_uuid=campaign_uuid,
-            version=version,
-            model=model,
-        )
-
     async def generate(self, req: NarrativeRequest) -> NarrativeResponse:
-        if not self._prose_repo.is_dir():
-            raise RuntimeError(
-                _missing_prose_message(f"prose repo not found at {self._prose_repo}")
-            )
-        # Issue #19: this transport ships req.system_prompt verbatim and
-        # derives nothing itself. An empty one would run the CLI with no
-        # chronicler register at all and persist generic-assistant prose
-        # as a biography — the silent failure this issue removes.
+        """Generate prose from the exact system + user turn supplied.
+
+        Issue #30: this transport is now pure generation. Versioning,
+        briefing/biography files, the attribution footer, git commits and
+        DB persistence all live in :mod:`chronicler.narrative.runner`.
+        The only filesystem touch left is the throwaway temp dir holding
+        the system-prompt file for the ``claude --print`` subprocess.
+        """
+        # Kept here as well as in the runner: an empty system prompt
+        # would run the CLI with no chronicler register at all and
+        # persist generic-assistant prose as a biography.
         if not req.system_prompt.strip():
             raise RuntimeError(
                 "refusing to invoke claude --print with an empty system prompt: "
@@ -675,30 +603,15 @@ class ClaudeCodeProvider(NarrativeProvider):
         campaign_uuid = metadata.get("campaign_uuid") or "_unscoped"
         character_id = metadata.get("character_id") or "_unknown"
 
-        brief_path, bio_path, version = _briefing_paths(
-            prose_repo=self._prose_repo,
-            campaign_uuid=campaign_uuid,
-            character_id=character_id,
-        )
-
-        brief_path.parent.mkdir(parents=True, exist_ok=True)
-        bio_path.parent.mkdir(parents=True, exist_ok=True)
-
-        briefing_text = render_briefing_markdown(req)
-        brief_path.write_text(briefing_text, encoding="utf-8")
-
-        # Repo-relative artifact paths, used by the cj2f auto-commit.
-        rel_brief = brief_path.relative_to(self._prose_repo).as_posix()
-        rel_bio = bio_path.relative_to(self._prose_repo).as_posix()
-
         # ck3_chronicler-5d9o: resolve model per request kind.
-        # biography* + chronicle_export stay on Opus.
         base_model = self._resolve_model(req.kind)
-        # ck3_chronicler-cs1o: engage the [1m] 1M-context variant (2x
-        # input price) only when THIS call's prompt approaches the 200k
-        # standard window. The briefing dominates prompt size — the
-        # wrapper adds <500 chars.
-        est_tokens = estimate_prompt_tokens(briefing_text)
+        # Issue #30: the runner computed this once from system + user
+        # text. The fallback keeps direct calls (tests, one-offs) usable.
+        est_tokens = (
+            req.prompt_tokens_estimate
+            if req.prompt_tokens_estimate is not None
+            else estimate_prompt_tokens(req.system_prompt + req.user_prompt)
+        )
         # Issue #46: the bracket is applied because THIS transport declares
         # MODEL_BRACKET, not because the helper used to be named after it.
         model_for_call = (
@@ -716,11 +629,10 @@ class ClaudeCodeProvider(NarrativeProvider):
             )
 
         log.info(
-            "claude_code: invoking %s for character_id=%s campaign=%s version=%d kind=%s",
+            "claude_code: invoking %s for character_id=%s campaign=%s kind=%s",
             model_for_call,
             character_id,
             campaign_uuid,
-            version,
             req.kind,
         )
 
@@ -736,7 +648,7 @@ class ClaudeCodeProvider(NarrativeProvider):
             system_prompt_file.write_text(req.system_prompt, encoding="utf-8")
             argv, stdin_input = self._build_argv_and_stdin(
                 model=model_for_call,
-                briefing_text=briefing_text,
+                briefing_text=req.user_prompt,
                 system_prompt_file=system_prompt_file,
             )
             stdout = await self._run_subprocess(
@@ -749,9 +661,6 @@ class ClaudeCodeProvider(NarrativeProvider):
         latency_ms = int((time.monotonic() - start) * 1000)
 
         envelope = _parse_json_envelope(stdout)
-        # ck3_chronicler-l7rk: the model wrote nothing (no tools). Pull the
-        # prose from the envelope's `result`; _persist_artifacts writes the
-        # on-disk file.
         result_text = (envelope.get("result") if envelope else None) or ""
         body = result_text.strip()
         if not body:
@@ -763,19 +672,6 @@ class ClaudeCodeProvider(NarrativeProvider):
 
         usage = _usage_from_envelope(envelope, requested_model=model_for_call, kind=req.kind)
 
-        await self._persist_artifacts(
-            bio_path=bio_path,
-            body=body,
-            rel_brief=rel_brief,
-            rel_bio=rel_bio,
-            character_id=character_id,
-            campaign_uuid=campaign_uuid,
-            version=version,
-            model=usage.model_actual,
-            input_tokens=usage.input_tokens,
-            output_tokens=usage.output_tokens,
-        )
-
         return NarrativeResponse(
             text=body,
             model=usage.model_actual,
@@ -786,6 +682,10 @@ class ClaudeCodeProvider(NarrativeProvider):
             cache_write_tokens=usage.cache_write_tokens,
             cost_usd=usage.cost_usd,
         )
+
+    @property
+    def attribution_label(self) -> str:
+        return "Claude Code"
 
 
 def make_claude_code_provider(

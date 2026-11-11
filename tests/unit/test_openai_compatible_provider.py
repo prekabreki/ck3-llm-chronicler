@@ -35,8 +35,8 @@ from chronicler.narrative.openai_compatible import (
     OpenAICompatibleProvider,
     make_openai_compatible_provider,
 )
-from chronicler.narrative.prose_io import render_briefing_markdown
 from chronicler.narrative.provider import NarrativeRequest
+from chronicler.narrative.runner import ArtifactDescriptor, run_generation
 
 TEST_KEY = "sk-unmistakable-secret-9f3c1a"
 
@@ -45,6 +45,17 @@ TEST_KEY = "sk-unmistakable-secret-9f3c1a"
 def _clean_model_env(monkeypatch):
     for var in mr.ALL_MODEL_ENV_VARS:
         monkeypatch.delenv(var, raising=False)
+
+
+@pytest.fixture(autouse=True)
+def _no_runner_commit(monkeypatch):
+    """The runner owns git now; keep unit tests off the real subprocess.
+    The commit-specific test re-patches with its own recorder."""
+
+    async def _noop(**kwargs):
+        return None
+
+    monkeypatch.setattr("chronicler.narrative.runner.git_commit_biography", _noop)
 
 
 @pytest.fixture(autouse=True)
@@ -57,18 +68,6 @@ def _clean_transport_env(monkeypatch):
         "OPENAI_API_KEY",
     ):
         monkeypatch.delenv(var, raising=False)
-
-
-@pytest.fixture(autouse=True)
-def _no_git(monkeypatch):
-    """Skip the real git auto-commit spawn. The dedicated commit test
-    re-patches with its own recorder, which wins because it is applied
-    after this autouse fixture."""
-
-    async def _noop(**kwargs):
-        return None
-
-    monkeypatch.setattr("chronicler.narrative.openai_compatible.git_commit_biography", _noop)
 
 
 def _completion(
@@ -356,11 +355,6 @@ async def test_user_turn_is_byte_identical_across_all_three_transports(tmp_path,
     """
     from chronicler.narrative.anthropic import AnthropicProvider
 
-    async def _noop(**kwargs):
-        return None
-
-    monkeypatch.setattr("chronicler.narrative.anthropic.git_commit_biography", _noop)
-
     req = _request()
     captured: dict = {}
 
@@ -403,7 +397,7 @@ async def test_user_turn_is_byte_identical_across_all_three_transports(tmp_path,
     cc = ClaudeCodeProvider(prose_repo_path=tmp_path)
     _, stdin_bytes = cc._build_argv_and_stdin(
         model="m",
-        briefing_text=render_briefing_markdown(req),
+        briefing_text=req.user_prompt,
         system_prompt_file=tmp_path / "sys.md",
     )
     assert stdin_bytes.decode("utf-8") == oai_user
@@ -606,20 +600,6 @@ async def test_generate_refuses_an_empty_system_prompt(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_generate_fails_loud_when_the_prose_dir_is_missing(tmp_path):
-    absent = tmp_path / "absent"
-
-    def handler(request: httpx.Request) -> httpx.Response:  # pragma: no cover
-        raise AssertionError("the endpoint was called with no prose dir")
-
-    p = _provider_with(handler, absent)
-    with pytest.raises(RuntimeError, match="chronicler init-prose"):
-        await p.generate(_request())
-
-    assert not absent.exists()
-
-
-@pytest.mark.asyncio
 async def test_length_truncation_raises_runtime_error(tmp_path):
     """The audit M-N5 class of bug, ported: a length-truncated completion
     carries non-empty text, so without this guard it passes the non-empty
@@ -630,9 +610,6 @@ async def test_length_truncation_raises_runtime_error(tmp_path):
     p = _provider_with(lambda request: _response(payload), tmp_path)
     with pytest.raises(RuntimeError, match="truncated"):
         await p.generate(_request())
-
-    # and nothing was persisted as a finished biography
-    assert not (tmp_path / "biographies" / "camp-1" / "42-v1.md").exists()
 
 
 @pytest.mark.asyncio
@@ -853,10 +830,46 @@ async def test_api_key_never_reaches_the_briefing_or_biography(tmp_path):
 # --- prose-repo side effects ---
 
 
+# --- prose-repo side effects (issue #30: owned by the runner) ---
+
+
+def _artifact() -> ArtifactDescriptor:
+    return ArtifactDescriptor(directory="camp-1", basename="42", subject="biography: 42")
+
+
+async def _run_artifacts(provider, *, allocate_version=None):
+    return await run_generation(
+        provider=provider,
+        kind="biography_woven",
+        prompt_version="biography_v5",
+        system_prompt="(assembled register + voice rules)",
+        user_prompt="briefing body",
+        metadata={"campaign_uuid": "camp-1", "character_id": "42"},
+        artifact=_artifact(),
+        allocate_version=allocate_version or (lambda: 1),
+    )
+
+
+@pytest.mark.asyncio
+async def test_generate_fails_loud_when_the_prose_dir_is_missing(tmp_path):
+    """Issue #30: the refusal moved from the transport to the runner, but
+    it still fires before any model call."""
+    absent = tmp_path / "absent"
+
+    def handler(request: httpx.Request) -> httpx.Response:  # pragma: no cover
+        raise AssertionError("the endpoint was called with no prose dir")
+
+    p = _provider_with(handler, absent)
+    outcome = await _run_artifacts(p)
+    assert outcome.error is not None and "chronicler init-prose" in outcome.error
+    assert not absent.exists()
+
+
 @pytest.mark.asyncio
 async def test_writes_prose_repo_artifacts_and_footer(tmp_path):
     p = _provider_with(lambda request: _response(), tmp_path)
-    resp = await p.generate(_request())
+    outcome = await _run_artifacts(p)
+    assert outcome.error is None
     brief = tmp_path / "briefings" / "camp-1" / "42-v1.md"
     bio = tmp_path / "biographies" / "camp-1" / "42-v1.md"
     assert brief.is_file()
@@ -865,7 +878,8 @@ async def test_writes_prose_repo_artifacts_and_footer(tmp_path):
     assert on_disk.startswith("Harold was bold.")
     assert "gpt-5.6-luna" in on_disk
     # the response body stays bare prose — no footer double-stored in DB
-    assert resp.text == "Harold was bold."
+    assert outcome.response is not None
+    assert outcome.response.text == "Harold was bold."
     assert "# Briefing: character 42" in brief.read_text(encoding="utf-8")
 
 
@@ -874,7 +888,7 @@ async def test_footer_names_the_endpoint_that_wrote_it(tmp_path):
     """Attribution has to distinguish an OpenAI generation from a local
     one months later, when the only record is the file on disk."""
     p = _provider_with(lambda request: _response(), tmp_path)
-    await p.generate(_request())
+    await _run_artifacts(p)
     on_disk = (tmp_path / "biographies" / "camp-1" / "42-v1.md").read_text(encoding="utf-8")
     assert "openai" in on_disk.lower()
 
@@ -882,8 +896,8 @@ async def test_footer_names_the_endpoint_that_wrote_it(tmp_path):
 @pytest.mark.asyncio
 async def test_versions_increment_across_calls(tmp_path):
     p = _provider_with(lambda request: _response(), tmp_path)
-    await p.generate(_request())
-    await p.generate(_request())
+    await _run_artifacts(p, allocate_version=lambda: 1)
+    await _run_artifacts(p, allocate_version=lambda: 2)
     assert (tmp_path / "biographies" / "camp-1" / "42-v2.md").is_file()
 
 
@@ -894,9 +908,9 @@ async def test_git_commit_invoked_with_rel_paths(tmp_path, monkeypatch):
     async def recorder(**kwargs):
         recorded.update(kwargs)
 
-    monkeypatch.setattr("chronicler.narrative.openai_compatible.git_commit_biography", recorder)
+    monkeypatch.setattr("chronicler.narrative.runner.git_commit_biography", recorder)
     p = _provider_with(lambda request: _response(), tmp_path)
-    await p.generate(_request())
+    await _run_artifacts(p)
     assert recorded["rel_brief"] == "briefings/camp-1/42-v1.md"
     assert recorded["rel_bio"] == "biographies/camp-1/42-v1.md"
     assert recorded["version"] == 1

@@ -41,7 +41,8 @@ from chronicler.db.registry import (
 )
 from chronicler.db.repository import get_latest_biography_for_character
 from chronicler.narrative.prose_io import assemble_system_prompt
-from chronicler.narrative.provider import NarrativeProvider, NarrativeRequest
+from chronicler.narrative.provider import NarrativeProvider, NarrativeResponse
+from chronicler.narrative.runner import ArtifactDescriptor, run_generation
 
 log = logging.getLogger(__name__)
 
@@ -404,39 +405,9 @@ async def generate_closing_chronicle(
     # ClosingOutcome error (HTTP 502, campaign NOT archived, safe to
     # retry) rather than an exception escaping the route.
     try:
-        request = NarrativeRequest(
-            kind="chronicle_export",
-            prompt_version=PROMPT_TEMPLATE_VERSION,
-            system_prompt=assemble_system_prompt(
-                prose_repo=provider.prose_repo_path, kind="chronicle_export"
-            ),
-            user_prompt=_build_user_prompt(
-                campaign.name,
-                campaign.founding_dynasty_name,
-                snapshots,
-                end_of_campaign_date=campaign.last_event_at,
-            ),
-            # ck3_chronicler-g1y5: thread campaign_uuid + character_id so
-            # ClaudeCodeProvider files at prose_repo/biographies/<uuid>/
-            # closing-chronicle-vN.md instead of falling through to the
-            # _unscoped/_unknown bucket. character_id is a fixed sentinel
-            # because the closing chronicle is one document per campaign,
-            # not per character — but the path-builder expects a string in
-            # that slot. campaign_id is the UUID throughout the chronicler
-            # (see registry.campaigns.create_campaign).
-            metadata={
-                "campaign_uuid": campaign_id,
-                "character_id": "closing-chronicle",
-                "campaign_id": campaign_id,
-                "campaign_name": campaign.name,
-                "tracked_count": str(len(tracked_ids)),
-            },
+        system_prompt = assemble_system_prompt(
+            prose_repo=provider.prose_repo_path, kind="chronicle_export"
         )
-        # Issue #29: hold the provider's shared concurrency permit so the
-        # closing chronicle can't run alongside the scheduler's biography
-        # fan-out (a local Ollama/LM Studio preset tolerates only one).
-        async with provider.generation_limiter():
-            response = await provider.generate(request)
     except Exception as e:
         log.exception("closing-chronicle generation failed for campaign %s", campaign_id)
         return ClosingOutcome(
@@ -445,24 +416,70 @@ async def generate_closing_chronicle(
             generated_at=None,
         )
 
-    # Phase 3: persist.
-    generated_at = datetime.now(UTC).isoformat()
-    set_campaign_closing_chronicle(
-        campaign_id,
-        response.text,
-        generated_at=generated_at,
-        # ck3_chronicler-li0z: persist the closing chronicle's token spend so
-        # cost-summary counts it (it isn't a Biography row).
-        input_tokens=response.input_tokens,
-        output_tokens=response.output_tokens,
-        # ck3_chronicler-cs1o: attribution + cache/cost breakdown so the
-        # chronicle's spend buckets under the transport that ran it.
-        provider=provider.name_for_kind("chronicle_export"),
-        cache_read_tokens=response.cache_read_tokens,
-        cache_write_tokens=response.cache_write_tokens,
-        cost_usd=response.cost_usd,
-        registry=registry,
+    user_prompt = _build_user_prompt(
+        campaign.name,
+        campaign.founding_dynasty_name,
+        snapshots,
+        end_of_campaign_date=campaign.last_event_at,
     )
+    # ck3_chronicler-g1y5: the campaign UUID is the artifact directory.
+    # Issue #30: the closing chronicle now names its artifact explicitly
+    # (directory, basename, commit subject) instead of passing the
+    # "closing-chronicle" character-id sentinel for path derivation. The
+    # metadata keeps the display id for the briefing header.
+    artifact = ArtifactDescriptor(
+        directory=campaign_id,
+        basename="closing-chronicle",
+        subject="biography: closing-chronicle",
+    )
+    metadata = {
+        "campaign_uuid": campaign_id,
+        "character_id": "closing-chronicle",
+        "campaign_id": campaign_id,
+        "campaign_name": campaign.name,
+        "tracked_count": str(len(tracked_ids)),
+    }
+    generated_at_holder: dict[str, str | None] = {"value": None}
+
+    def _persist(response: NarrativeResponse, version: int) -> None:
+        generated_at = datetime.now(UTC).isoformat()
+        generated_at_holder["value"] = generated_at
+        set_campaign_closing_chronicle(
+            campaign_id,
+            response.text,
+            generated_at=generated_at,
+            # ck3_chronicler-li0z: persist the closing chronicle's token spend so
+            # cost-summary counts it (it isn't a Biography row).
+            input_tokens=response.input_tokens,
+            output_tokens=response.output_tokens,
+            # ck3_chronicler-cs1o: attribution + cache/cost breakdown so the
+            # chronicle's spend buckets under the transport that ran it.
+            provider=provider.name_for_kind("chronicle_export"),
+            cache_read_tokens=response.cache_read_tokens,
+            cache_write_tokens=response.cache_write_tokens,
+            cost_usd=response.cost_usd,
+            registry=registry,
+        )
+
+    result = await run_generation(
+        provider=provider,
+        kind="chronicle_export",
+        prompt_version=PROMPT_TEMPLATE_VERSION,
+        system_prompt=system_prompt,
+        user_prompt=user_prompt,
+        metadata=metadata,
+        artifact=artifact,
+        persist=_persist,
+    )
+    if result.error is not None:
+        return ClosingOutcome(
+            body=None,
+            error=result.error,
+            generated_at=None,
+        )
+    response = result.response
+    assert response is not None
+    generated_at = generated_at_holder["value"]
     log.info(
         "closing chronicle generated for campaign %s: %d tracked lives",
         campaign_id,

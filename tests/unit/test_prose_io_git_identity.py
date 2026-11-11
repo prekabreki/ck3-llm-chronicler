@@ -111,3 +111,35 @@ async def test_commit_uses_real_identity_when_configured(
         check=True,
     )
     assert log.stdout.strip() == "Real User <real@user.com>"
+
+
+@pytest.mark.asyncio
+async def test_commit_message_uses_an_explicit_subject(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Issue #30: the runner passes an artifact subject (biography or
+    closing chronicle) instead of a character-id sentinel."""
+    gitconfig = tmp_path / "global-gitconfig"
+    gitconfig.write_text("[user]\n\tname = Real User\n\temail = real@user.com\n")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(gitconfig))
+    monkeypatch.setenv("GIT_CONFIG_SYSTEM", str(tmp_path / "no-system-gitconfig"))
+    repo = _setup_prose_repo(tmp_path)
+
+    await prose_io.git_commit_biography(
+        prose_repo=repo,
+        rel_brief="briefings/test-campaign/char1-v1.md",
+        rel_bio="biographies/test-campaign/char1-v1.md",
+        character_id="ignored-sentinel",
+        campaign_uuid="test-campaign",
+        version=1,
+        model="test-model",
+        subject="closing chronicle",
+    )
+
+    message = subprocess.run(
+        ["git", "-C", str(repo), "log", "-1", "--pretty=%s"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    assert message == "closing chronicle v1 (campaign=test-campaign, model=test-model)"

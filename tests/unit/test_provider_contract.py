@@ -61,13 +61,9 @@ def _mock_client(response_factory) -> httpx.AsyncClient:
 def provider(request, tmp_path, monkeypatch) -> NarrativeProvider:
     """Every production transport that can be constructed hermetically."""
 
-    async def _noop(**kwargs):
-        return None
-
     if request.param == "openai-compatible":
         from chronicler.narrative.openai_compatible import OpenAICompatibleProvider
 
-        monkeypatch.setattr("chronicler.narrative.openai_compatible.git_commit_biography", _noop)
         return OpenAICompatibleProvider(
             model="gpt-5.6-luna",
             preset="openai",
@@ -79,7 +75,6 @@ def provider(request, tmp_path, monkeypatch) -> NarrativeProvider:
 
     from chronicler.narrative.anthropic import AnthropicProvider
 
-    monkeypatch.setattr("chronicler.narrative.anthropic.git_commit_biography", _noop)
     return AnthropicProvider(
         api_key="test-key",
         prose_repo_path=tmp_path,
@@ -284,11 +279,6 @@ async def test_openai_compatible_never_sends_a_1m_marker_however_big_the_prompt(
     marker."""
     from chronicler.narrative.model_resolution import LONG_CONTEXT_THRESHOLD_TOKENS
     from chronicler.narrative.openai_compatible import OpenAICompatibleProvider
-
-    async def _noop(**kwargs):
-        return None
-
-    monkeypatch.setattr("chronicler.narrative.openai_compatible.git_commit_biography", _noop)
 
     captured: dict[str, object] = {}
 

@@ -51,13 +51,7 @@ from chronicler.narrative.model_resolution import (
     resolved_models as _resolved_models_snapshot,
 )
 from chronicler.narrative.prose_io import (
-    BRIEFING_WRAPPER_INSTRUCTION,
-    _missing_prose_message,
-    briefing_paths,
-    format_attribution_footer,
     get_prose_repo_path,
-    git_commit_biography,
-    render_briefing_markdown,
 )
 from chronicler.narrative.provider import (
     NarrativeProvider,
@@ -250,16 +244,15 @@ class AnthropicProvider(NarrativeProvider):
         return LongContextPolicy.BETA_HEADER
 
     async def generate(self, req: NarrativeRequest) -> NarrativeResponse:
-        # Issue #19: fail loud before touching the filesystem. Without
-        # this check the mkdirs below created briefings/ + biographies/
-        # under a nonexistent prose root, and the old
-        # _build_system_blocks fell back to an empty system block — so a
-        # misconfigured install silently persisted generic-assistant
-        # prose as a valid biography. Parity with ClaudeCodeProvider.
-        if not self._prose_repo.is_dir():
-            raise RuntimeError(
-                _missing_prose_message(f"prose repo not found at {self._prose_repo}")
-            )
+        """Generate prose from the exact system + user turn supplied.
+
+        Issue #30: pure generation again. Versioning, briefing/biography
+        files, the attribution footer, git commit and DB persistence live
+        in :mod:`chronicler.narrative.runner`.
+        """
+        # Kept here as well as in the runner (defence in depth). A
+        # register-less call would persist generic-assistant prose as a
+        # valid biography.
         if not req.system_prompt.strip():
             raise RuntimeError(
                 "refusing to call the Messages API with an empty system prompt: "
@@ -272,24 +265,8 @@ class AnthropicProvider(NarrativeProvider):
         campaign_uuid = metadata.get("campaign_uuid") or "_unscoped"
         character_id = metadata.get("character_id") or "_unknown"
 
-        brief_path, bio_path, version = briefing_paths(
-            prose_repo=self._prose_repo,
-            campaign_uuid=campaign_uuid,
-            character_id=character_id,
-        )
-        brief_path.parent.mkdir(parents=True, exist_ok=True)
-        bio_path.parent.mkdir(parents=True, exist_ok=True)
-
-        briefing_text = render_briefing_markdown(req)
-        brief_path.write_text(briefing_text, encoding="utf-8")
-        rel_brief = brief_path.relative_to(self._prose_repo).as_posix()
-        rel_bio = bio_path.relative_to(self._prose_repo).as_posix()
-
         model = self._resolve_model(req.kind)
         # Issue #19: one block carrying the assembly's output verbatim.
-        # It is static per kind, so the cache_control breakpoint still
-        # makes the whole prefix one prompt-cache entry (ma96 slice-3
-        # locality preserved).
         system_blocks = [
             {
                 "type": "text",
@@ -297,7 +274,9 @@ class AnthropicProvider(NarrativeProvider):
                 "cache_control": {"type": "ephemeral"},
             }
         ]
-        user_content = BRIEFING_WRAPPER_INSTRUCTION + briefing_text
+        # Issue #30: the runner hands over the exact user turn (wrapper +
+        # briefing) and computed the long-context estimate once.
+        user_content = req.user_prompt
         body = {
             "model": model,
             **effort_request_fields(model, narrative_effort(), self._max_tokens),
@@ -310,8 +289,10 @@ class AnthropicProvider(NarrativeProvider):
             "anthropic-version": ANTHROPIC_VERSION,
             "content-type": "application/json",
         }
-        est_tokens = estimate_prompt_tokens(
-            "".join(b["text"] for b in system_blocks) + user_content
+        est_tokens = (
+            req.prompt_tokens_estimate
+            if req.prompt_tokens_estimate is not None
+            else estimate_prompt_tokens("".join(b["text"] for b in system_blocks) + user_content)
         )
         if self.long_context_policy is LongContextPolicy.BETA_HEADER and needs_long_context(
             est_tokens
@@ -327,12 +308,10 @@ class AnthropicProvider(NarrativeProvider):
             )
 
         log.info(
-            "anthropic: invoking %s for character_id=%s campaign=%s "
-            "version=%d kind=%s (est=%d prompt tokens)",
+            "anthropic: invoking %s for character_id=%s campaign=%s kind=%s (est=%d prompt tokens)",
             model,
             character_id,
             campaign_uuid,
-            version,
             req.kind,
             est_tokens,
         )
@@ -396,33 +375,6 @@ class AnthropicProvider(NarrativeProvider):
             output_tokens=output_tokens,
         )
 
-        # Prose-repo parity: bio file + attribution footer + git commit.
-        bio_path.write_text(text + "\n", encoding="utf-8")
-        footer = format_attribution_footer(
-            model=model_actual,
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            agent="Anthropic API",
-        )
-        try:
-            with bio_path.open("a", encoding="utf-8") as fh:
-                fh.write(footer)
-        except OSError:
-            log.exception(
-                "anthropic: failed to append attribution footer to %s; "
-                "biography body is unaffected",
-                bio_path,
-            )
-        await git_commit_biography(
-            prose_repo=self._prose_repo,
-            rel_brief=rel_brief,
-            rel_bio=rel_bio,
-            character_id=character_id,
-            campaign_uuid=campaign_uuid,
-            version=version,
-            model=model_actual,
-        )
-
         return NarrativeResponse(
             text=text,
             model=model_actual,
@@ -433,6 +385,10 @@ class AnthropicProvider(NarrativeProvider):
             cache_write_tokens=cache_write_tokens,
             cost_usd=cost_usd,
         )
+
+    @property
+    def attribution_label(self) -> str:
+        return "Anthropic API"
 
     def _compute_cost_usd(
         self,

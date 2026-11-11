@@ -4,6 +4,8 @@ import asyncio
 import logging
 import weakref
 from abc import ABC, abstractmethod
+from contextlib import asynccontextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
@@ -11,6 +13,15 @@ from typing import Literal
 from chronicler.narrative.model_resolution import LongContextPolicy
 
 log = logging.getLogger(__name__)
+
+# Issue #30: the scheduler and the generation runner can nest a permit
+# acquisition for the same provider (the scheduler admits a task, the
+# runner then guards the model call). A plain ``async with limiter`` in
+# both places would deadlock at width 1, so the held-limiter ids are
+# tracked per task context and the inner acquisition is a no-op.
+_HELD_GENERATION_PERMITS: ContextVar[frozenset[int]] = ContextVar(
+    "chronicler_held_generation_permits", default=frozenset()
+)
 
 PromptKind = Literal[
     "biography",
@@ -26,6 +37,12 @@ class NarrativeRequest:
     system_prompt: str
     user_prompt: str
     metadata: dict[str, str] = field(default_factory=dict)
+    # Issue #30: the generation runner computes the one long-context
+    # estimate from the assembled system prompt plus the exact user
+    # content handed to the transport. Direct transport tests/one-off
+    # callers may leave it None; the transport then falls back to its
+    # own estimate so it remains usable in isolation.
+    prompt_tokens_estimate: int | None = None
 
 
 @dataclass(frozen=True)
@@ -64,9 +81,10 @@ class NarrativeProvider(ABC):
       ``CHRONICLER_NARRATIVE_BACKEND=anthropic``.
 
     Both are pure transports: model choice is shared
-    (``narrative.model_resolution``) and both write identical prose-repo
-    artifacts (``narrative.prose_io``) — switching backends changes who
-    gets billed, never the prose. There is still no capability-based
+    (``narrative.model_resolution``) and the shared generation runner
+    (``narrative.runner``) writes identical prose-repo artifacts for
+    whichever one ran — switching backends changes who gets billed,
+    never the prose. There is still no capability-based
     routing and no per-kind provider registry: the factory
     (``narrative.factory.make_narrative_provider``) picks ONE transport
     per process. The ABC also remains the test seam — the suite injects
@@ -174,6 +192,41 @@ class NarrativeProvider(ABC):
             limiter = asyncio.Semaphore(width)
             limiters[loop] = limiter
         return limiter
+
+    @asynccontextmanager
+    async def generation_permit(self):
+        """Acquire this provider's shared generation permit, re-entrantly.
+
+        Issue #30: the generation runner owns the acquire so every path
+        (scheduler biography, direct CLI call, closing chronicle) draws
+        from the one provider-scoped pool. The scheduler still admits
+        tasks through the same pool for queue ordering, so nested
+        acquisition is a no-op for the same task instead of deadlocking
+        at width 1.
+        """
+        limiter = self.generation_limiter()
+        key = id(limiter)
+        held = _HELD_GENERATION_PERMITS.get()
+        if key in held:
+            yield
+            return
+        await limiter.acquire()
+        token = _HELD_GENERATION_PERMITS.set(held | {key})
+        try:
+            yield
+        finally:
+            _HELD_GENERATION_PERMITS.reset(token)
+            limiter.release()
+
+    @property
+    def attribution_label(self) -> str:
+        """Human label for the on-disk attribution footer.
+
+        Issue #30 moved the footer out of the transports and into the
+        shared runner. Each transport still names itself the way the old
+        per-transport footer did; the default keeps test doubles legible.
+        """
+        return self.name
 
     @property
     def long_context_policy(self) -> LongContextPolicy:

@@ -535,8 +535,9 @@ def _estimate_provider_destination(
     provider = getattr(request_app_state, "narrative_provider", None)
     if provider is None:
         return None, None
-    name_for_kind = getattr(provider, "name_for_kind", None)
-    full_name = name_for_kind(kind) if callable(name_for_kind) else provider.name
+    # Issue #30: ``name_for_kind`` is part of the ABC contract now (issue
+    # #46), so there is no duck-typed fallback to keep alive here.
+    full_name = provider.name_for_kind(kind)
     model = full_name.split(":", 1)[1] if ":" in full_name else None
     return full_name, model
 

@@ -57,6 +57,7 @@ from chronicler.db.repository import (
     get_character,
     insert_biography,
     list_events_for_character,
+    next_biography_version,
 )
 
 # Prompt assembly moved to prompt_builder (ck3_chronicler-05rs).
@@ -71,7 +72,8 @@ from chronicler.narrative.prompt_builder import (
     build_briefing,
 )
 from chronicler.narrative.prose_io import assemble_system_prompt
-from chronicler.narrative.provider import NarrativeProvider, NarrativeRequest
+from chronicler.narrative.provider import NarrativeProvider, NarrativeResponse
+from chronicler.narrative.runner import ArtifactDescriptor, run_generation
 
 log = logging.getLogger(__name__)
 
@@ -244,13 +246,14 @@ async def generate_biography(
     if campaign_uuid:
         metadata["campaign_uuid"] = campaign_uuid
 
-    # Phase 2: generate. No DB session held during this call.
+    # Phase 2 + 3: the shared runner owns version allocation, the
+    # briefing/biography artifacts, the git commit and the DB insert, all
+    # inside one error net that returns rather than raises.
     # Issue #19: the system prompt is assembled here, provider-neutrally,
     # from the prose dir the transport declares — register + the kind's
     # voice file. Inside the error net on purpose: a missing prose dir
-    # raises, and that has to become a GenerationOutcome error (a failed
-    # queue item the user sees) rather than an exception escaping into
-    # the ingest layer, which must never block on biography generation.
+    # becomes a GenerationOutcome error (a failed queue item the user
+    # sees) rather than an exception escaping into the ingest layer.
     try:
         system_prompt = assemble_system_prompt(
             prose_repo=provider.prose_repo_path, kind=briefing.kind
@@ -259,14 +262,6 @@ async def generate_biography(
         # system prompt's SHA-256 so a biography row can be tied to the
         # exact editable prose rules that produced it.
         system_prompt_sha256 = hashlib.sha256(system_prompt.encode("utf-8")).hexdigest()[:16]
-        request = NarrativeRequest(
-            kind=briefing.kind,
-            prompt_version=briefing.prompt_version,
-            system_prompt=system_prompt,
-            user_prompt=briefing.user_prompt,
-            metadata=metadata,
-        )
-        response = await provider.generate(request)
     except Exception as e:
         log.exception("biography generation failed for character %d", character_id)
         return GenerationOutcome(
@@ -275,29 +270,61 @@ async def generate_biography(
             events_through_event_id=last_event_id,
         )
 
-    # Phase 3: persist.
-    with session_scope(factory) as session:
-        biography = insert_biography(
-            session,
-            character_id=character_id,
-            body=response.text,
-            prompt_template_version=briefing.prompt_version,
-            system_prompt_sha256=system_prompt_sha256,
-            # ck3_chronicler-cs1o: attribute the kind that actually ran —
-            # this was hardcoded "biography", mis-attributing woven rows
-            # (and corrupting per-provider USD aggregation).
-            provider=provider.name_for_kind(briefing.kind),
-            model=response.model,
+    artifact = ArtifactDescriptor(
+        directory=campaign_uuid or "_unscoped",
+        basename=str(character_id),
+        subject=f"biography: {character_id}",
+    )
+    generated_at = datetime.now(UTC).isoformat()
+
+    def _allocate_version() -> int:
+        with session_scope(factory) as alloc_session:
+            return next_biography_version(alloc_session, character_id)
+
+    def _persist(response: NarrativeResponse, version: int) -> int:
+        with session_scope(factory) as persist_session:
+            biography = insert_biography(
+                persist_session,
+                character_id=character_id,
+                body=response.text,
+                prompt_template_version=briefing.prompt_version,
+                system_prompt_sha256=system_prompt_sha256,
+                # ck3_chronicler-cs1o: attribute the kind that actually ran —
+                # this was hardcoded "biography", mis-attributing woven rows
+                # (and corrupting per-provider USD aggregation).
+                provider=provider.name_for_kind(briefing.kind),
+                model=response.model,
+                events_through_event_id=last_event_id,
+                generated_at=generated_at,
+                prompt_tokens=response.input_tokens,
+                completion_tokens=response.output_tokens,
+                cache_read_tokens=response.cache_read_tokens,
+                cache_write_tokens=response.cache_write_tokens,
+                cost_usd=response.cost_usd,
+                version=version,
+            )
+            return biography.id
+
+    result = await run_generation(
+        provider=provider,
+        kind=briefing.kind,
+        prompt_version=briefing.prompt_version,
+        system_prompt=system_prompt,
+        user_prompt=briefing.user_prompt,
+        metadata=metadata,
+        artifact=artifact,
+        allocate_version=_allocate_version,
+        persist=_persist,
+    )
+    if result.error is not None:
+        return GenerationOutcome(
+            biography_id=None,
+            error=result.error,
             events_through_event_id=last_event_id,
-            generated_at=datetime.now(UTC).isoformat(),
-            prompt_tokens=response.input_tokens,
-            completion_tokens=response.output_tokens,
-            cache_read_tokens=response.cache_read_tokens,
-            cache_write_tokens=response.cache_write_tokens,
-            cost_usd=response.cost_usd,
         )
-        biography_id = biography.id
-        biography_version = biography.version
+
+    biography_id = result.persisted
+    biography_version = result.version
     log.info(
         "biography generated for character %d: bio_id=%d version=%d events=%d",
         character_id,
