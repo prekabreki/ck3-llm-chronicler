@@ -658,6 +658,56 @@ async def test_provider_max_concurrent_serialises_a_local_backend(factory) -> No
     assert peak[0] == 1
 
 
+@pytest.mark.asyncio
+async def test_two_schedulers_sharing_provider_share_one_permit(factory) -> None:
+    """Issue #29: each campaign used to build its own semaphore, so two live
+    campaigns over one provider ran two generations at once. The limiter now
+    lives on the provider, so a provider declaring max_concurrent=1 must never
+    see more than one ``generate`` in flight across schedulers."""
+    with factory() as s:
+        upsert_character(s, ck3_id=4001)
+        upsert_character(s, ck3_id=4002)
+        s.commit()
+
+    peak = [0]
+    inflight = []
+    lock = asyncio.Lock()
+
+    class _SharedProvider(NarrativeProvider):
+        @property
+        def name(self):
+            return "ollama:shared"
+
+        @property
+        def max_concurrent(self) -> int:
+            return 1
+
+        async def generate(self, req):
+            async with lock:
+                inflight.append(int(req.metadata["character_id"]))
+                peak[0] = max(peak[0], len(inflight))
+            await asyncio.sleep(0.05)
+            async with lock:
+                inflight.pop()
+            return NarrativeResponse(
+                text="bio",
+                model=self.name,
+                input_tokens=1,
+                output_tokens=1,
+                latency_ms=50,
+            )
+
+    provider = _SharedProvider()
+    scheduler_a = NarrativeScheduler(factory, provider)
+    scheduler_b = NarrativeScheduler(factory, provider)
+
+    scheduler_a.schedule(4001)
+    scheduler_b.schedule(4002)
+    await asyncio.gather(scheduler_a.drain(), scheduler_b.drain())
+
+    assert peak[0] == 1
+
+
 def test_explicit_max_concurrent_still_overrides_the_provider(factory) -> None:
     scheduler = NarrativeScheduler(factory, _DeclaredWidthProvider(1), max_concurrent=3)
     assert scheduler._max_concurrent == 3

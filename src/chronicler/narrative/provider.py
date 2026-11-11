@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import asyncio
+import logging
+import weakref
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
 from chronicler.narrative.model_resolution import LongContextPolicy
+
+log = logging.getLogger(__name__)
 
 PromptKind = Literal[
     "biography",
@@ -133,6 +138,42 @@ class NarrativeProvider(ABC):
         1.
         """
         return 4
+
+    def generation_limiter(self) -> asyncio.Semaphore:
+        """The concurrency limiter shared by every generation path.
+
+        Issue #29: each campaign's scheduler used to build its own
+        semaphore, so N live campaigns sending the same local provider N
+        generations at once, and the closing chronicle bypassed the bound
+        entirely. The limiter now lives on the provider instance so every
+        scheduler sharing it (and the closing chronicle) draws from one
+        permit pool sized from :attr:`max_concurrent`.
+
+        Created lazily on the running loop because asyncio primitives bind
+        to the loop that first awaits them, and pytest-asyncio gives every
+        test its own loop (the same reason ``prose_io._commit_lock`` keys
+        per loop). A nonsense width is clamped to 1 rather than creating a
+        zero-permit semaphore that would deadlock the queue with no error.
+        """
+        loop = asyncio.get_running_loop()
+        limiters = self.__dict__.get("_generation_limiters")
+        if limiters is None:
+            limiters = weakref.WeakKeyDictionary()
+            self.__dict__["_generation_limiters"] = limiters
+        limiter = limiters.get(loop)
+        if limiter is None:
+            width = self.max_concurrent
+            if not isinstance(width, int) or width < 1:
+                log.warning(
+                    "narrative provider %r reported max_concurrent=%r; "
+                    "clamping to 1 (a non-positive width would deadlock the queue)",
+                    self.name,
+                    width,
+                )
+                width = 1
+            limiter = asyncio.Semaphore(width)
+            limiters[loop] = limiter
+        return limiter
 
     @property
     def long_context_policy(self) -> LongContextPolicy:
