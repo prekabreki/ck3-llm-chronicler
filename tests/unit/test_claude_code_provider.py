@@ -31,6 +31,7 @@ from chronicler.narrative.claude_code import (
 from chronicler.narrative.prose_io import next_version as _next_version
 from chronicler.narrative.prose_io import render_briefing_markdown
 from chronicler.narrative.provider import NarrativeRequest
+from chronicler.narrative.runner import ArtifactDescriptor, run_generation
 
 
 def _make_prose_repo(tmp_path: Path) -> Path:
@@ -310,10 +311,9 @@ async def test_generate_lean_path_reads_prose_from_result_and_writes_file(
 ) -> None:
     """ck3_chronicler-l7rk: generate() runs a scoped completion — tools
     disallowed, the register via --system-prompt-file, a neutral cwd (NOT the
-    prose repo) — and reads the prose from the envelope `result`, writing the
-    bio file itself (the agent writes nothing)."""
+    prose repo) — and returns the prose from the envelope `result`.
+    Issue #30: writing the biography is the runner's job now."""
     prose = _make_prose_repo(tmp_path)
-    expected_bio_path = prose / "biographies" / "abc-123" / "12345-v1.md"
     calls: list[tuple[list, object]] = []
 
     async def fake_create_subprocess_exec(*argv, **kwargs):
@@ -351,10 +351,8 @@ async def test_generate_lean_path_reads_prose_from_result_and_writes_file(
     provider = ClaudeCodeProvider(prose_repo_path=prose)
     resp = await provider.generate(_request())
 
-    # Prose came from `result`; we persisted the file ourselves.
+    # Prose came from `result` and is returned untouched.
     assert resp.text == "The earl endured one last winter."
-    assert expected_bio_path.is_file()
-    assert "endured one last winter" in expected_bio_path.read_text(encoding="utf-8")
 
     # Inspect the claude invocation (filter out the best-effort git commit,
     # which shares the patched create_subprocess_exec).
@@ -413,8 +411,9 @@ async def test_lean_prompt_passed_via_stdin_not_command_line(tmp_path: Path, mon
         fake_create_subprocess_exec,
     )
 
+    user_turn = "Below is the briefing...\n\n--- BRIEFING ---\nRecorded events: (none)"
     provider = ClaudeCodeProvider(prose_repo_path=prose, model="claude-opus-4-7[1m]")
-    await provider.generate(_request())
+    await provider.generate(_request(user_prompt=user_turn))
 
     claude_calls = [c for c in calls if "--print" in c["argv"]]
     assert len(claude_calls) == 1
@@ -433,7 +432,7 @@ async def test_lean_prompt_passed_via_stdin_not_command_line(tmp_path: Path, mon
         if isinstance(captured["input"], (bytes, bytearray))
         else captured["input"]
     )
-    assert "--- BRIEFING ---" in body
+    assert body == ("Below is the briefing...\n\n--- BRIEFING ---\nRecorded events: (none)")
 
 
 # --- ck3_chronicler-591u: cache-hit ratio observability log ---
@@ -557,12 +556,10 @@ async def test_generate_logs_cache_hit_ratio_zero_when_no_cacheable_tokens(
 async def test_generate_writes_briefing_runs_subprocess_and_returns_response(
     tmp_path: Path, monkeypatch
 ) -> None:
-    """Happy path: provider materialises briefing, runs claude in a
-    neutral cwd, reads the prose from the envelope ``result``, writes
-    the biography file itself, returns NarrativeResponse with parsed
-    token counts."""
+    """Happy path: provider runs claude in a neutral cwd, reads the prose
+    from the envelope ``result`` and returns it with parsed token counts.
+    Issue #30: no files are written by the transport."""
     prose = _make_prose_repo(tmp_path)
-    expected_bio_path = prose / "biographies" / "abc-123" / "12345-v1.md"
     captured_cwds: list[object] = []
 
     async def fake_create_subprocess_exec(*argv, **kwargs):
@@ -600,20 +597,13 @@ async def test_generate_writes_briefing_runs_subprocess_and_returns_response(
     req = _request()
     resp = await provider.generate(req)
 
-    # Briefing was written.
-    brief_path = prose / "briefings" / "abc-123" / "12345-v1.md"
-    assert brief_path.is_file()
-    brief = brief_path.read_text(encoding="utf-8")
-    assert "character 12345" in brief
-    assert "Recorded events: (none)" in brief
-
     # claude ran in a neutral temp dir, NOT the prose repo (l7rk).
     assert len(captured_cwds) == 1
     assert captured_cwds[0] != str(prose)
 
-    # The provider persisted the biography file itself.
-    assert expected_bio_path.is_file()
-    assert "Sweyn fell at Aalborg" in expected_bio_path.read_text(encoding="utf-8")
+    # Issue #30: the transport writes no prose-repo artifacts.
+    assert not list((prose / "briefings").rglob("*.md"))
+    assert not list((prose / "biographies").rglob("*.md"))
 
     # Response carries the biography body and parsed token counts.
     assert resp.text == "Sweyn fell at Aalborg in his fifty-sixth year."
@@ -627,10 +617,9 @@ async def test_generate_writes_briefing_runs_subprocess_and_returns_response(
 async def test_generate_keeps_biography_prompt_for_biography_kinds(
     tmp_path: Path, monkeypatch
 ) -> None:
-    """The biography wrapper must stay biography-shaped for kind=
-    biography and kind=biography_woven so the existing prose pipeline
-    is unchanged. Regression guard against future kind-aware refactors
-    accidentally breaking the marquee biography path."""
+    """Issue #30: the runner assembles the biography-shaped user turn
+    (wrapper + briefing); the transport ships it byte-for-byte without
+    re-wrapping or adding framing."""
     prose = _make_prose_repo(tmp_path)
     calls: list[dict] = []
 
@@ -656,16 +645,18 @@ async def test_generate_keeps_biography_prompt_for_biography_kinds(
         fake_create_subprocess_exec,
     )
 
+    user_turn = (
+        "Below is the briefing for one character. Write their biography in full.\n\n"
+        "--- BRIEFING ---\nRecorded events: (none)"
+    )
     provider = ClaudeCodeProvider(prose_repo_path=prose)
-    await provider.generate(_request())  # kind="biography_woven"
+    await provider.generate(_request(user_prompt=user_turn))  # kind="biography_woven"
 
     assert len(calls) == 1
     # The prompt arrives via stdin (wpx4), not a -p arg.
     assert "-p" not in calls[0]["argv"]
     prompt = calls[0]["input"].decode("utf-8")
-    assert "Write their biography in full" in prompt
-    # The briefing rides inline below the instruction line.
-    assert "--- BRIEFING ---" in prompt
+    assert prompt == user_turn
     # JSON wrapper must NOT leak into the biography prompt.
     assert "JSON" not in prompt
 
@@ -856,63 +847,6 @@ async def test_generate_raises_when_envelope_has_no_prose(tmp_path: Path, monkey
         await provider.generate(_request())
     # Nothing was persisted — no empty biography artifact on disk.
     assert not (prose / "biographies" / "abc-123" / "12345-v1.md").exists()
-
-
-@pytest.mark.asyncio
-async def test_generate_raises_when_prose_repo_missing(tmp_path: Path) -> None:
-    """A configured prose repo path that doesn't exist should surface
-    a clear error, not a confusing CalledProcessError on the subprocess."""
-    provider = ClaudeCodeProvider(prose_repo_path=tmp_path / "nonexistent")
-    with pytest.raises(RuntimeError, match="prose repo not found"):
-        await provider.generate(_request())
-
-
-@pytest.mark.asyncio
-async def test_generate_versions_increment_per_character(tmp_path: Path, monkeypatch) -> None:
-    """Two successive generations for the same character produce v1
-    then v2 — the provider must read existing biography files when
-    deciding the next version."""
-    prose = _make_prose_repo(tmp_path)
-    bio_dir = prose / "biographies" / "abc-123"
-    call_count = {"n": 0}
-
-    async def fake_create_subprocess_exec(*argv, **kwargs):
-        # ck3_chronicler-cj2f: provider also shells out to git for the
-        # auto-commit pass. Treat git invocations as no-op success — the
-        # test cares about claude --print bookkeeping, not the commit;
-        # git semantics are covered by their own tests below.
-        if argv and argv[0] == "git":
-            return _git_ok_proc(argv)
-        call_count["n"] += 1
-        # The prose for each call comes back in the envelope `result`;
-        # the provider writes the version-suffixed file itself.
-        proc = AsyncMock()
-        proc.communicate = AsyncMock(
-            return_value=(
-                _result_envelope(f"version-{call_count['n']} body"),
-                b"",
-            )
-        )
-        proc.returncode = 0
-        proc.kill = lambda: None
-        proc.wait = AsyncMock(return_value=0)
-        return proc
-
-    monkeypatch.setattr(
-        "chronicler.narrative.claude_code.asyncio.create_subprocess_exec",
-        fake_create_subprocess_exec,
-    )
-
-    provider = ClaudeCodeProvider(prose_repo_path=prose)
-    r1 = await provider.generate(_request())
-    r2 = await provider.generate(_request())
-    assert r1.text == "version-1 body"
-    assert r2.text == "version-2 body"
-    assert (bio_dir / "12345-v1.md").is_file()
-    assert (bio_dir / "12345-v2.md").is_file()
-    # And the matching briefings should have been written.
-    assert (prose / "briefings" / "abc-123" / "12345-v1.md").is_file()
-    assert (prose / "briefings" / "abc-123" / "12345-v2.md").is_file()
 
 
 @pytest.mark.asyncio
@@ -1108,9 +1042,9 @@ def test_format_attribution_footer_with_full_token_counts() -> None:
     """vcv2-followup: the attribution footer renders model + thousand-
     separated token counts so a reader of the on-disk biography sees
     which model wrote it and how much it cost in tokens."""
-    from chronicler.narrative.claude_code import _format_attribution_footer
+    from chronicler.narrative.prose_io import format_attribution_footer
 
-    footer = _format_attribution_footer(
+    footer = format_attribution_footer(
         model="claude-opus-4-7[1m]",
         input_tokens=12345,
         output_tokens=678,
@@ -1127,9 +1061,9 @@ def test_format_attribution_footer_collapses_when_tokens_missing() -> None:
     (parse failure, model variant that omits usage), the footer still
     surfaces the model attribution rather than rendering an awkward
     half-empty token segment."""
-    from chronicler.narrative.claude_code import _format_attribution_footer
+    from chronicler.narrative.prose_io import format_attribution_footer
 
-    footer = _format_attribution_footer(
+    footer = format_attribution_footer(
         model="claude-opus-4-7[1m]",
         input_tokens=None,
         output_tokens=None,
@@ -1140,17 +1074,81 @@ def test_format_attribution_footer_collapses_when_tokens_missing() -> None:
     assert " out" not in footer
 
 
+# --- ck3_chronicler-cj2f: auto-commit after biography write ---
+
+
+# --- issue #30: prose-repo side effects moved to the runner ---
+
+
+def _artifact() -> ArtifactDescriptor:
+    return ArtifactDescriptor(directory="abc-123", basename="12345", subject="biography: 12345")
+
+
+async def _run_artifacts(provider, *, version: int = 1):
+    return await run_generation(
+        provider=provider,
+        kind="biography_woven",
+        prompt_version="biography_v5",
+        system_prompt="(assembled register + voice rules)",
+        user_prompt="Recorded events: (none)",
+        metadata={"character_id": "12345", "campaign_uuid": "abc-123"},
+        artifact=_artifact(),
+        allocate_version=lambda: version,
+    )
+
+
+@pytest.mark.asyncio
+async def test_generate_raises_when_prose_repo_missing(tmp_path: Path) -> None:
+    """Issue #30: the missing-prose-dir refusal lives in the runner now,
+    before any model call."""
+    provider = ClaudeCodeProvider(prose_repo_path=tmp_path / "nonexistent")
+    outcome = await _run_artifacts(provider)
+    assert outcome.error is not None and "prose repo not found" in outcome.error
+
+
+@pytest.mark.asyncio
+async def test_generate_versions_increment_per_character(tmp_path: Path, monkeypatch) -> None:
+    """The runner uses the allocated version in both filenames."""
+    prose = _make_prose_repo(tmp_path)
+    call_count = {"n": 0}
+
+    async def fake_create_subprocess_exec(*argv, **kwargs):
+        if argv and argv[0] == "git":
+            return _git_ok_proc(argv)
+        call_count["n"] += 1
+        proc = AsyncMock()
+        proc.communicate = AsyncMock(
+            return_value=(_result_envelope(f"version-{call_count['n']} body"), b"")
+        )
+        proc.returncode = 0
+        proc.kill = lambda: None
+        proc.wait = AsyncMock(return_value=0)
+        return proc
+
+    monkeypatch.setattr(
+        "chronicler.narrative.claude_code.asyncio.create_subprocess_exec",
+        fake_create_subprocess_exec,
+    )
+
+    provider = ClaudeCodeProvider(prose_repo_path=prose)
+    r1 = await _run_artifacts(provider, version=1)
+    r2 = await _run_artifacts(provider, version=2)
+    assert r1.response is not None and r1.response.text == "version-1 body"
+    assert r2.response is not None and r2.response.text == "version-2 body"
+    bio_dir = prose / "biographies" / "abc-123"
+    assert (bio_dir / "12345-v1.md").is_file()
+    assert (bio_dir / "12345-v2.md").is_file()
+    assert (prose / "briefings" / "abc-123" / "12345-v1.md").is_file()
+    assert (prose / "briefings" / "abc-123" / "12345-v2.md").is_file()
+
+
 @pytest.mark.asyncio
 async def test_generate_appends_attribution_footer_to_biography_file(
     tmp_path: Path, monkeypatch
 ) -> None:
     """vcv2-followup end-to-end: the on-disk .md ends with the
-    attribution line. Body in NarrativeResponse stays bare prose
-    (the DB column doesn't double-store the footer)."""
+    attribution line. Body in NarrativeResponse stays bare prose."""
     prose = _make_prose_repo(tmp_path)
-
-    # Realistic envelope shape from the 2026-05-08 smoke session, with
-    # the prose riding in `result` (lean shape).
     envelope = json.dumps(
         {
             "type": "result",
@@ -1166,8 +1164,6 @@ async def test_generate_appends_attribution_footer_to_biography_file(
     ).encode("utf-8")
 
     async def fake_create_subprocess_exec(*argv, **kwargs):
-        if argv and argv[0] == "git":
-            return _git_ok_proc(argv)
         proc = AsyncMock()
         proc.communicate = AsyncMock(return_value=(envelope, b""))
         proc.returncode = 0
@@ -1181,14 +1177,10 @@ async def test_generate_appends_attribution_footer_to_biography_file(
     )
 
     provider = ClaudeCodeProvider(prose_repo_path=prose, model="claude-opus-4-7[1m]")
-    response = await provider.generate(_request())
+    outcome = await _run_artifacts(provider)
 
-    # NarrativeResponse.text stays bare prose — the footer is on disk only.
-    assert response.text == "Bare biography prose."
-
-    # The .md file gained the attribution footer, with thousand-
-    # separated token counts (5,300 in = 100 marginal + 5,000 cache_create
-    # + 200 cache_read; 850 out).
+    assert outcome.response is not None
+    assert outcome.response.text == "Bare biography prose."
     bio_path = prose / "biographies" / "abc-123" / "12345-v1.md"
     written = bio_path.read_text(encoding="utf-8")
     assert written.startswith("Bare biography prose.\n")
@@ -1198,28 +1190,19 @@ async def test_generate_appends_attribution_footer_to_biography_file(
     assert "850 out" in written
 
 
-# --- ck3_chronicler-cj2f: auto-commit after biography write ---
-
-
 @pytest.mark.asyncio
 async def test_generate_runs_git_add_and_commit_after_biography_write(
     tmp_path: Path, monkeypatch
 ) -> None:
-    """cj2f: ClaudeCodeProvider stages + commits the briefing/biography
-    pair after claude --print completes. The prose-repo CLAUDE.md tells
-    Claude Code NOT to commit itself ('the chronicler tool commits');
-    this provider is what makes that promise true. The git invocations
-    surface as additional asyncio.create_subprocess_exec calls — pin
-    that they happen and that the message references the character."""
+    """The runner stages + commits the briefing/biography pair after the
+    transport returns, with the character + version + model in the message."""
     prose = _make_prose_repo(tmp_path)
     invocations: list[list[str]] = []
 
     async def fake_create_subprocess_exec(*argv, **kwargs):
         invocations.append(list(argv))
         if argv and argv[0] == "git":
-            # diff --cached --quiet returns 1 ('changes staged') so commit fires.
             return _git_ok_proc(argv)
-        # claude --print: return the prose in the envelope `result`.
         proc = AsyncMock()
         proc.communicate = AsyncMock(return_value=(_result_envelope("body"), b""))
         proc.returncode = 0
@@ -1233,22 +1216,18 @@ async def test_generate_runs_git_add_and_commit_after_biography_write(
     )
 
     provider = ClaudeCodeProvider(prose_repo_path=prose, model="claude-opus-4-7[1m]")
-    await provider.generate(_request())
+    await _run_artifacts(provider)
 
-    # Three git invocations after the claude --print: add, diff, commit.
     git_calls = [inv for inv in invocations if inv and inv[0] == "git"]
     assert any("add" in inv for inv in git_calls), git_calls
     assert any("diff" in inv for inv in git_calls), git_calls
     commit_call = next((inv for inv in git_calls if "commit" in inv), None)
     assert commit_call is not None
-    # Commit message names the character + version + model so the prose-
-    # repo log carries the per-bio audit trail without needing the diff.
     msg_idx = commit_call.index("-m")
     msg = commit_call[msg_idx + 1]
     assert "12345" in msg
     assert "v1" in msg
     assert "claude-opus-4-7[1m]" in msg
-    # Both artifacts staged + committed via --only.
     assert "briefings/abc-123/12345-v1.md" in commit_call
     assert "biographies/abc-123/12345-v1.md" in commit_call
 
@@ -1257,10 +1236,7 @@ async def test_generate_runs_git_add_and_commit_after_biography_write(
 async def test_generate_skips_commit_when_diff_quiet_reports_no_changes(
     tmp_path: Path, monkeypatch
 ) -> None:
-    """cj2f: idempotence — if `git diff --cached --quiet` exits 0 (no
-    changes staged), the commit step is skipped. Repeat-runs against
-    unchanged content (rare, but possible if claude regenerates byte-
-    identical output) don't pollute the log with empty commits."""
+    """Idempotence: a clean staged diff skips the commit."""
     prose = _make_prose_repo(tmp_path)
     invocations: list[list[str]] = []
 
@@ -1269,7 +1245,6 @@ async def test_generate_skips_commit_when_diff_quiet_reports_no_changes(
         if argv and argv[0] == "git":
             proc = AsyncMock()
             proc.communicate = AsyncMock(return_value=(b"", b""))
-            # diff --cached --quiet returns 0 ('clean') — commit MUST be skipped.
             proc.returncode = 0
             proc.kill = lambda: None
             proc.wait = AsyncMock(return_value=0)
@@ -1287,10 +1262,9 @@ async def test_generate_skips_commit_when_diff_quiet_reports_no_changes(
     )
 
     provider = ClaudeCodeProvider(prose_repo_path=prose)
-    response = await provider.generate(_request())
-    assert response.text == "body"
+    outcome = await _run_artifacts(provider)
+    assert outcome.error is None
 
-    # add + diff fire; commit does not.
     git_calls = [inv for inv in invocations if inv and inv[0] == "git"]
     assert any("add" in inv for inv in git_calls)
     assert any("diff" in inv for inv in git_calls)
@@ -1301,16 +1275,11 @@ async def test_generate_skips_commit_when_diff_quiet_reports_no_changes(
 async def test_generate_swallows_git_failures_so_biography_still_returns(
     tmp_path: Path, monkeypatch
 ) -> None:
-    """cj2f: a git failure (not a repo, FileNotFoundError, etc) MUST
-    NOT propagate — the biography is already on disk and must reach
-    the caller. The provider's error contract treats any exception
-    from generate() as a wiped response, so failing here would lose
-    real LLM work over a missing git binary or a non-repo prose dir."""
+    """A git failure must not cost the caller the generated prose."""
     prose = _make_prose_repo(tmp_path)
 
     async def fake_create_subprocess_exec(*argv, **kwargs):
         if argv and argv[0] == "git":
-            # Simulate `git` not on PATH.
             raise FileNotFoundError(2, "no such file", "git")
         proc = AsyncMock()
         proc.communicate = AsyncMock(return_value=(_result_envelope("biography body"), b""))
@@ -1325,8 +1294,11 @@ async def test_generate_swallows_git_failures_so_biography_still_returns(
     )
 
     provider = ClaudeCodeProvider(prose_repo_path=prose)
-    response = await provider.generate(_request())
-    assert response.text == "biography body"
+    outcome = await _run_artifacts(provider)
+    assert outcome.error is None
+    assert outcome.response is not None
+    assert outcome.response.text == "biography body"
+    assert (prose / "biographies" / "abc-123" / "12345-v1.md").is_file()
 
 
 # --- Provider contract ---

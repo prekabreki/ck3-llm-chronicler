@@ -450,7 +450,18 @@ class NarrativeScheduler:
         # out instead of leaking as an uncaught CancelledError. The
         # `finally` clears the item_id→task index regardless of outcome.
         try:
-            async with self._generation_limiter():
+            # Issue #30: the provider's permit is acquired by the
+            # generation runner now. The scheduler still uses it (or its
+            # explicit override) to admit tasks in queue order; the
+            # provider's permit is re-entrant per task, so the runner's
+            # inner acquire is a no-op and width-1 providers don't
+            # deadlock.
+            admission = (
+                self._generation_limiter()
+                if self._explicit_max_concurrent
+                else self._provider.generation_permit()
+            )
+            async with admission:
                 lock = self._locks.setdefault(character_id, asyncio.Lock())
                 async with lock:
                     start_loop_time = asyncio.get_running_loop().time()

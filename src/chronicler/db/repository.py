@@ -741,13 +741,20 @@ def insert_biography(
     cache_read_tokens: int | None = None,
     cache_write_tokens: int | None = None,
     cost_usd: float | None = None,
+    version: int | None = None,
 ) -> Biography:
     """Insert a new biography row, auto-incrementing version per character.
 
     Each character has an independent version sequence (1, 2, 3, ...) so
     regenerations don't collide across characters. Returns the persisted row.
+
+    Issue #30: the generation runner allocates the version from this same
+    DB sequence before writing the artifact filename, then passes it here
+    via ``version`` so the file, commit message and row cannot disagree.
     """
-    next_version = _next_biography_version(session, character_id)
+    next_version = (
+        version if version is not None else _next_biography_version(session, character_id)
+    )
     row = Biography(
         character_id=character_id,
         version=next_version,
@@ -771,10 +778,20 @@ def insert_biography(
     return row
 
 
-def _next_biography_version(session: Session, character_id: int) -> int:
+def next_biography_version(session: Session, character_id: int) -> int:
+    """The next version the biography sequence will assign for a character.
+
+    Issue #30: the generation runner allocates from this single DB
+    counter before writing filenames; the directory is no longer scanned,
+    so file versions and persisted versions stay in lockstep.
+    """
     stmt = select(func.max(Biography.version)).where(Biography.character_id == character_id)
     current = session.execute(stmt).scalar()
     return (current or 0) + 1
+
+
+def _next_biography_version(session: Session, character_id: int) -> int:
+    return next_biography_version(session, character_id)
 
 
 def get_latest_biography_for_character(session: Session, character_id: int) -> Biography | None:

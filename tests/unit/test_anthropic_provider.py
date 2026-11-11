@@ -25,6 +25,18 @@ from chronicler.narrative.anthropic import (
     make_anthropic_provider,
 )
 from chronicler.narrative.provider import NarrativeRequest
+from chronicler.narrative.runner import ArtifactDescriptor, run_generation
+
+
+@pytest.fixture(autouse=True)
+def _no_runner_commit(monkeypatch):
+    """The runner owns git now; keep unit tests off the real subprocess.
+    The commit-specific test re-patches with its own recorder."""
+
+    async def _noop(**kwargs):
+        return None
+
+    monkeypatch.setattr("chronicler.narrative.runner.git_commit_biography", _noop)
 
 
 @pytest.fixture(autouse=True)
@@ -32,18 +44,6 @@ def _clean_model_env(monkeypatch):
     for var in mr.ALL_MODEL_ENV_VARS:
         monkeypatch.delenv(var, raising=False)
     monkeypatch.delenv(mr.NARRATIVE_EFFORT_ENV, raising=False)
-
-
-@pytest.fixture(autouse=True)
-def _no_git(monkeypatch):
-    """Skip the real git auto-commit spawn in unit tests. The dedicated
-    commit test re-patches with its own recorder, which wins because it
-    is applied after this autouse fixture."""
-
-    async def _noop(**kwargs):
-        return None
-
-    monkeypatch.setattr("chronicler.narrative.anthropic.git_commit_biography", _noop)
 
 
 def _sse(events: list[tuple[str, dict]]) -> bytes:
@@ -432,23 +432,6 @@ async def test_generate_refuses_an_empty_system_prompt(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_generate_fails_loud_when_the_prose_dir_is_missing(tmp_path):
-    """The bogus-tree mkdir: with no existence check the provider used to
-    materialise briefings/ and biographies/ under a nonexistent prose
-    root and carry on."""
-    absent = tmp_path / "absent"
-
-    def handler(request: httpx.Request) -> httpx.Response:  # pragma: no cover
-        raise AssertionError("the API was called with no prose dir")
-
-    p = _provider_with(handler, absent)
-    with pytest.raises(RuntimeError, match="chronicler init-prose"):
-        await p.generate(_request())
-
-    assert not absent.exists()
-
-
-@pytest.mark.asyncio
 async def test_long_prompt_engages_1m_beta_header(tmp_path):
     captured: dict = {}
 
@@ -558,23 +541,11 @@ async def test_max_tokens_truncation_raises_runtime_error(tmp_path):
         await p.generate(_request())
 
 
-def _recording_commit(monkeypatch) -> dict:
-    recorded: dict = {}
-
-    async def recorder(**kwargs):
-        recorded.update(kwargs)
-
-    monkeypatch.setattr("chronicler.narrative.anthropic.git_commit_biography", recorder)
-    return recorded
-
-
 @pytest.mark.asyncio
-async def test_eof_after_text_raises_before_persistence(tmp_path, monkeypatch):
+async def test_eof_after_text_raises_before_persistence(tmp_path):
     """An HTTP 200 that ends right after text deltas (no message_delta, no
-    message_stop) is an incomplete SSE stream: the partial prose must never
-    reach biography persistence or the commit helper."""
-    recorded = _recording_commit(monkeypatch)
-
+    message_stop) is an incomplete SSE stream: it must raise so the runner
+    never writes or commits partial prose."""
     stream = _sse(
         [
             (
@@ -601,17 +572,12 @@ async def test_eof_after_text_raises_before_persistence(tmp_path, monkeypatch):
     p = _provider_with(lambda request: _stream_response(stream), tmp_path)
     with pytest.raises(RuntimeError, match="message_stop"):
         await p.generate(_request())
-    assert not (tmp_path / "biographies" / "camp-1" / "42-v1.md").exists()
-    assert recorded == {}
 
 
 @pytest.mark.asyncio
-async def test_eof_after_final_delta_before_message_stop_raises(tmp_path, monkeypatch):
+async def test_eof_after_final_delta_before_message_stop_raises(tmp_path):
     """A stream carrying message_delta with a valid stop_reason but no
-    terminal message_stop event is also incomplete: it must raise before
-    any biography file or commit."""
-    recorded = _recording_commit(monkeypatch)
-
+    terminal message_stop event is also incomplete: it must raise."""
     stream = _sse(
         [
             (
@@ -655,8 +621,6 @@ async def test_eof_after_final_delta_before_message_stop_raises(tmp_path, monkey
     p = _provider_with(lambda request: _stream_response(stream), tmp_path)
     with pytest.raises(RuntimeError, match="message_stop"):
         await p.generate(_request())
-    assert not (tmp_path / "biographies" / "camp-1" / "42-v1.md").exists()
-    assert recorded == {}
 
 
 @pytest.mark.asyncio
@@ -665,11 +629,9 @@ async def test_eof_after_final_delta_before_message_stop_raises(tmp_path, monkey
     [{}, {"stop_reason": "refusal"}],
     ids=["missing_stop_reason", "unsupported_stop_reason"],
 )
-async def test_message_stop_without_successful_stop_reason_raises(tmp_path, monkeypatch, delta):
+async def test_message_stop_without_successful_stop_reason_raises(tmp_path, delta):
     """message_stop arrives, but without a successful stop reason
-    (end_turn/stop_sequence): the biography must not be persisted."""
-    recorded = _recording_commit(monkeypatch)
-
+    (end_turn/stop_sequence): the transport must raise."""
     stream = _sse(
         [
             (
@@ -710,8 +672,6 @@ async def test_message_stop_without_successful_stop_reason_raises(tmp_path, monk
     p = _provider_with(lambda request: _stream_response(stream), tmp_path)
     with pytest.raises(RuntimeError, match="stop_reason"):
         await p.generate(_request())
-    assert not (tmp_path / "biographies" / "camp-1" / "42-v1.md").exists()
-    assert recorded == {}
 
 
 @pytest.mark.asyncio
@@ -730,10 +690,47 @@ async def test_wall_clock_timeout_raises_runtime_error(tmp_path, monkeypatch):
 # --- prose-repo side effects ---
 
 
+# --- prose-repo side effects (issue #30: owned by the runner) ---
+
+
+def _artifact() -> ArtifactDescriptor:
+    return ArtifactDescriptor(directory="camp-1", basename="42", subject="biography: 42")
+
+
+async def _run_artifacts(provider, *, allocate_version=None, persist=None):
+    return await run_generation(
+        provider=provider,
+        kind="biography_woven",
+        prompt_version="biography_v5",
+        system_prompt="(assembled register + voice rules)",
+        user_prompt="briefing body",
+        metadata={"campaign_uuid": "camp-1", "character_id": "42"},
+        artifact=_artifact(),
+        allocate_version=allocate_version or (lambda: 1),
+        persist=persist,
+    )
+
+
+@pytest.mark.asyncio
+async def test_generate_fails_loud_when_the_prose_dir_is_missing(tmp_path):
+    """Issue #30: the refusal moved from the transport to the runner, but
+    it still fires before any model call."""
+    absent = tmp_path / "absent"
+
+    def handler(request: httpx.Request) -> httpx.Response:  # pragma: no cover
+        raise AssertionError("the API was called with no prose dir")
+
+    p = _provider_with(handler, absent)
+    outcome = await _run_artifacts(p)
+    assert outcome.error is not None and "chronicler init-prose" in outcome.error
+    assert not absent.exists()
+
+
 @pytest.mark.asyncio
 async def test_writes_prose_repo_artifacts_and_footer(tmp_path):
     p = _provider_with(lambda request: _stream_response(), tmp_path)
-    resp = await p.generate(_request())
+    outcome = await _run_artifacts(p)
+    assert outcome.error is None
     brief = tmp_path / "briefings" / "camp-1" / "42-v1.md"
     bio = tmp_path / "biographies" / "camp-1" / "42-v1.md"
     assert brief.is_file()
@@ -743,7 +740,8 @@ async def test_writes_prose_repo_artifacts_and_footer(tmp_path):
     assert "Set down by Anthropic API" in on_disk
     assert "claude-opus-4-7" in on_disk
     # the response body stays bare prose — no footer double-stored in DB
-    assert resp.text == "Harold was bold."
+    assert outcome.response is not None
+    assert outcome.response.text == "Harold was bold."
     # briefing carries the rendered header
     assert "# Briefing: character 42" in brief.read_text(encoding="utf-8")
 
@@ -751,8 +749,8 @@ async def test_writes_prose_repo_artifacts_and_footer(tmp_path):
 @pytest.mark.asyncio
 async def test_versions_increment_across_calls(tmp_path):
     p = _provider_with(lambda request: _stream_response(), tmp_path)
-    await p.generate(_request())
-    await p.generate(_request())
+    await _run_artifacts(p, allocate_version=lambda: 1)
+    await _run_artifacts(p, allocate_version=lambda: 2)
     assert (tmp_path / "biographies" / "camp-1" / "42-v2.md").is_file()
 
 
@@ -763,9 +761,9 @@ async def test_git_commit_invoked_with_rel_paths(tmp_path, monkeypatch):
     async def recorder(**kwargs):
         recorded.update(kwargs)
 
-    monkeypatch.setattr("chronicler.narrative.anthropic.git_commit_biography", recorder)
+    monkeypatch.setattr("chronicler.narrative.runner.git_commit_biography", recorder)
     p = _provider_with(lambda request: _stream_response(), tmp_path)
-    await p.generate(_request())
+    await _run_artifacts(p)
     assert recorded["rel_brief"] == "briefings/camp-1/42-v1.md"
     assert recorded["rel_bio"] == "biographies/camp-1/42-v1.md"
     assert recorded["version"] == 1

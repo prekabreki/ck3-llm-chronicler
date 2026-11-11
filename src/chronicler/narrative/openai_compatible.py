@@ -53,13 +53,7 @@ from chronicler.narrative.model_resolution import (
     narrative_effort,
 )
 from chronicler.narrative.prose_io import (
-    BRIEFING_WRAPPER_INSTRUCTION,
-    _missing_prose_message,
-    briefing_paths,
-    format_attribution_footer,
     get_prose_repo_path,
-    git_commit_biography,
-    render_briefing_markdown,
 )
 from chronicler.narrative.provider import (
     NarrativeProvider,
@@ -283,15 +277,15 @@ class OpenAICompatibleProvider(NarrativeProvider):
     # --- generation ---
 
     async def generate(self, req: NarrativeRequest) -> NarrativeResponse:
-        # Fail loud before touching the filesystem — parity with both
-        # existing transports. Without these two checks a misconfigured
-        # install silently persists register-less generic-assistant prose
-        # as a valid biography (the defect issue #19 fixed on the
-        # Anthropic path).
-        if not self._prose_repo.is_dir():
-            raise RuntimeError(
-                _missing_prose_message(f"prose repo not found at {self._prose_repo}")
-            )
+        """Generate prose from the exact system + user turn supplied.
+
+        Issue #30: pure generation again. Versioning, briefing/biography
+        files, the attribution footer, git commit and DB persistence live
+        in :mod:`chronicler.narrative.runner`.
+        """
+        # Kept here as well as in the runner (defence in depth). Without
+        # it a misconfigured install silently persists register-less
+        # generic-assistant prose as a valid biography.
         if not req.system_prompt.strip():
             raise RuntimeError(
                 "refusing to call the chat-completions endpoint with an empty "
@@ -304,25 +298,12 @@ class OpenAICompatibleProvider(NarrativeProvider):
         campaign_uuid = metadata.get("campaign_uuid") or "_unscoped"
         character_id = metadata.get("character_id") or "_unknown"
 
-        brief_path, bio_path, version = briefing_paths(
-            prose_repo=self._prose_repo,
-            campaign_uuid=campaign_uuid,
-            character_id=character_id,
-        )
-        brief_path.parent.mkdir(parents=True, exist_ok=True)
-        bio_path.parent.mkdir(parents=True, exist_ok=True)
-
-        briefing_text = render_briefing_markdown(req)
-        brief_path.write_text(briefing_text, encoding="utf-8")
-        rel_brief = brief_path.relative_to(self._prose_repo).as_posix()
-        rel_bio = bio_path.relative_to(self._prose_repo).as_posix()
-
         body: dict = {
             "model": self._model,
             "stream": False,
             "messages": [
                 {"role": "system", "content": req.system_prompt},
-                {"role": "user", "content": BRIEFING_WRAPPER_INSTRUCTION + briefing_text},
+                {"role": "user", "content": req.user_prompt},
             ],
             self._preset.max_tokens_field: self._max_output_tokens,
         }
@@ -333,12 +314,11 @@ class OpenAICompatibleProvider(NarrativeProvider):
             headers["authorization"] = f"Bearer {self._api_key}"
 
         log.info(
-            "%s: invoking %s for character_id=%s campaign=%s version=%d kind=%s",
+            "%s: invoking %s for character_id=%s campaign=%s kind=%s",
             self._preset.id,
             self._model,
             character_id,
             campaign_uuid,
-            version,
             req.kind,
         )
 
@@ -375,33 +355,6 @@ class OpenAICompatibleProvider(NarrativeProvider):
             output_tokens=output_tokens,
         )
 
-        # Prose-repo parity: bio file + attribution footer + git commit.
-        bio_path.write_text(text + "\n", encoding="utf-8")
-        footer = format_attribution_footer(
-            model=model_actual,
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            agent=self._agent_label(),
-        )
-        try:
-            with bio_path.open("a", encoding="utf-8") as fh:
-                fh.write(footer)
-        except OSError:
-            log.exception(
-                "%s: failed to append attribution footer to %s; biography body is unaffected",
-                self._preset.id,
-                bio_path,
-            )
-        await git_commit_biography(
-            prose_repo=self._prose_repo,
-            rel_brief=rel_brief,
-            rel_bio=rel_bio,
-            character_id=character_id,
-            campaign_uuid=campaign_uuid,
-            version=version,
-            model=model_actual,
-        )
-
         return NarrativeResponse(
             text=text,
             model=model_actual,
@@ -414,6 +367,10 @@ class OpenAICompatibleProvider(NarrativeProvider):
             cache_write_tokens=None,
             cost_usd=cost_usd,
         )
+
+    @property
+    def attribution_label(self) -> str:
+        return self._agent_label()
 
     def _agent_label(self) -> str:
         """Footer attribution: who set this text down, readable months
