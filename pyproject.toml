@@ -71,7 +71,7 @@ extend-immutable-calls = [
 ]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests", "tools/tests"]
 python_files = ["test_*.py"]
 asyncio_mode = "auto"
 # Pin imports to THIS rootdir's src/. The editable install writes an

@@ -106,6 +106,7 @@ beforeEach(() => {
     activeCampaign: 'Wessex',
     selectedCharacterId: null,
   });
+  vi.spyOn(client, 'getNarrativeCharacterStats').mockResolvedValue({ rows: [] });
   // ck3_chronicler-27ov.81 (audit L30): no listCharacters mock — names
   // now ride on the queue items + stats rows (character_name), so the
   // page no longer fetches the character list.

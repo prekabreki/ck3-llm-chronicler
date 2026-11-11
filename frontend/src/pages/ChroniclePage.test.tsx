@@ -70,6 +70,11 @@ const BIO: BiographyResponse = {
   completion_tokens: 800,
 };
 
+const PALETTE = {
+  black: [0, 0, 0] as [number, number, number],
+  red: [200, 30, 30] as [number, number, number],
+};
+
 const EMPTY_TREE: FamilyTreeResponse = {
   self_node: {
     ck3_id: 100,
@@ -100,6 +105,9 @@ beforeEach(() => {
     activeCampaign: 'Wessex',
     selectedCharacterId: 100,
   });
+  vi.spyOn(client, 'getHeraldryPalette').mockResolvedValue(PALETTE);
+  vi.spyOn(client, 'getCharacterCoa').mockResolvedValue(null);
+  vi.spyOn(client, 'getCharacterCoaHistory').mockResolvedValue({ entries: [] });
 });
 
 afterEach(() => {

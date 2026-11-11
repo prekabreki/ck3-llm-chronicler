@@ -19,6 +19,11 @@ import type {
   ClosingChronicleResponse,
 } from '../api/types';
 
+const PALETTE = {
+  black: [0, 0, 0] as [number, number, number],
+  red: [200, 30, 30] as [number, number, number],
+};
+
 const CAMPAIGN: CampaignResponse = {
   id: '1',
   name: 'Wessex',
@@ -69,6 +74,7 @@ beforeEach(() => {
     activeCampaign: 'Wessex',
     selectedCharacterId: null,
   });
+  vi.spyOn(client, 'getHeraldryPalette').mockResolvedValue(PALETTE);
 });
 
 afterEach(() => {

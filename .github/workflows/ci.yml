@@ -106,7 +106,7 @@ jobs:
       - name: Build the SPA into src/chronicler/api/static/app
         working-directory: frontend
         run: |
-          npm install --no-audit --no-fund
+          npm ci --no-audit --no-fund
           npm run build
 
       - name: pytest
@@ -144,13 +144,13 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install deps
-        # `npm install`, not `npm ci`: the @emnapi/* optional deps (wasm
-        # fallbacks pulled transitively) resolve to different patch
-        # versions across machines and over time, so a committed lock that
-        # `npm ci` accepts goes stale within days (npm's known optional-dep
-        # lockfile non-determinism). npm install reconciles the lock as a
-        # starting point instead of hard-failing on the drift.
-        run: npm install --no-audit --no-fund
+        # Issue #34: the old comment claimed `npm ci` rejected the committed
+        # lockfile. The 2026-11 audit ran `npm ci` against this lock on
+        # Node 22.22 / npm 10.9 and it succeeded, so both legs use the
+        # committed lock as-is instead of rewriting it with `npm install`.
+        # If a future optional-dep drift genuinely breaks this, record the
+        # observed error here before falling back.
+        run: npm ci --no-audit --no-fund
 
       - name: eslint
         run: npm run lint
