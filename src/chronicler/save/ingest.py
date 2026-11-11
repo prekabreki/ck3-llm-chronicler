@@ -1215,8 +1215,6 @@ async def run_save_ingest(
             except Exception:
                 log.exception("91hh teardown drain_for_campaign failed")
             await scheduler.drain()
-        if biography_provider is not None and hasattr(biography_provider, "aclose"):
-            await biography_provider.aclose()
         engine.dispose()
         # ck3_chronicler-tail-pip: publish a save_tail_stopped frame so the
         # AppShell pip can flip from --live to "Tail unavailable" without

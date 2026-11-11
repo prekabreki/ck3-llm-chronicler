@@ -322,7 +322,5 @@ async def run_ingest(
                     )
         if scheduler is not None:
             await scheduler.drain()
-        if biography_provider is not None and hasattr(biography_provider, "aclose"):
-            await biography_provider.aclose()
         engine.dispose()
         log.info("ingest loop stopped: campaign=%s", campaign_id)
