@@ -27,7 +27,7 @@ from chronicler.api.routes.migrate import router as migrate_router
 from chronicler.api.routes.narrative_queue import narrative_router
 from chronicler.api.routes.save import router as save_router
 from chronicler.api.routes.search import router as search_router
-from chronicler.api.routes.settings import settings_router as global_settings_router
+from chronicler.api.routes.settings import router as global_settings_router
 from chronicler.api.routes.tracked import router as tracked_router
 from chronicler.api.routes.tree import router as tree_router
 from chronicler.db.registry import get_data_dir
