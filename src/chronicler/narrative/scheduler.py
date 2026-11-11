@@ -2,8 +2,8 @@
 
 When the tailer ingests a death event for a tracked character, the
 orchestrator (V02-N03) needs to run as a background task so it never
-blocks the next debug.log line. Both kinds of background LLM work share the
-same single-lane semaphore (a 14B local model can only generate one
+blocks the next debug.log line. All background LLM work shares the
+provider's concurrency limiter (a local model can only generate one
 response at a time).
 
 :class:`NarrativeScheduler` owns:
@@ -13,18 +13,18 @@ response at a time).
   released between read/LLM/write phases — see pipeline.generate_biography)
 - a long-lived :class:`NarrativeProvider` (the httpx client lives across
   calls so we don't open/close per generation)
-- a global :class:`asyncio.Semaphore` (ck3_chronicler-6mek: default size
-  2, raised to 4 in ck3_chronicler-w2se) so concurrent death events don't
-  spawn unbounded parallel LLM tasks. Was 1 in the local-Ollama era — 14B
-  can only run one generation at a time on a single GPU, so anything
-  beyond max=1 just created queue overhead. After the tbrm pivot to
-  hosted Claude Code each ``claude --print`` is its own Node.js process
-  and Anthropic rate-limits the calls, so we can run a small fan-out
-  (2-4) without contention. Issue #46: the width now comes from the
+- a concurrency limiter borrowed from the provider (ck3_chronicler-6mek:
+  default size 2, raised to 4 in ck3_chronicler-w2se) so concurrent
+  death events don't spawn unbounded parallel LLM tasks. After the tbrm
+  pivot to hosted Claude Code each ``claude --print`` is its own Node.js
+  process and Anthropic rate-limits the calls, so we can run a small
+  fan-out (2-4) without contention. Issue #46: the width comes from the
   provider's :attr:`~chronicler.narrative.provider.NarrativeProvider.max_concurrent`
   (4 for the Anthropic-family transports, 1 for the local
   openai-compatible presets — one Ollama/LM Studio server shares one GPU,
-  so a 4-wide fan-out thrashes it). Pass ``max_concurrent`` explicitly to
+  so a 4-wide fan-out thrashes it). Issue #29: that limiter is one per
+  provider instance, not one per scheduler, so N live campaigns over one
+  provider share the permits. Pass ``max_concurrent`` explicitly to
   override the provider's own number; that is what the tests do.
 - a per-character :class:`asyncio.Lock` so a duplicate death event
   during testing doesn't kick off two concurrent generations for the
@@ -49,6 +49,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import weakref
 from collections.abc import Callable
 from typing import Protocol
 
@@ -123,7 +124,16 @@ class NarrativeScheduler:
             )
             width = 1
         self._max_concurrent = width
-        self._semaphore = asyncio.Semaphore(width)
+        # Issue #29: the semaphore belongs to the provider, not this
+        # scheduler, so every campaign scheduler sharing that provider (and
+        # the closing chronicle) draws from one permit pool. An explicit
+        # ``max_concurrent=`` keeps a scheduler-local limiter instead — used
+        # by tests and deliberate overrides. Both are keyed per running loop
+        # because asyncio primitives bind to the loop that first awaits them.
+        self._explicit_max_concurrent = max_concurrent is not None
+        self._override_limiters: weakref.WeakKeyDictionary[
+            asyncio.AbstractEventLoop, asyncio.Semaphore
+        ] = weakref.WeakKeyDictionary()
         self._locks: dict[int, asyncio.Lock] = {}
         self._tasks: set[asyncio.Task[None]] = set()
         # ck3_chronicler-c5wq: item_id → asyncio.Task lookup so the queue
@@ -165,6 +175,23 @@ class NarrativeScheduler:
         for the private ``_factory``.
         """
         return self._factory
+
+    def _generation_limiter(self) -> asyncio.Semaphore:
+        """The limiter a biography task must hold while generating.
+
+        With no explicit ``max_concurrent=`` this is the provider's shared
+        per-loop limiter (issue #29), so two campaigns over one provider
+        can't exceed the provider's width. An explicit width gives this
+        scheduler its own per-loop limiter of that size.
+        """
+        if not self._explicit_max_concurrent:
+            return self._provider.generation_limiter()
+        loop = asyncio.get_running_loop()
+        limiter = self._override_limiters.get(loop)
+        if limiter is None:
+            limiter = asyncio.Semaphore(self._max_concurrent)
+            self._override_limiters[loop] = limiter
+        return limiter
 
     # ck3_chronicler-27ov.43 (audit M-N4): the per-task `kind` parameter and
     # regenerate's `force_rebuild` were dead generality left from the
@@ -217,7 +244,7 @@ class NarrativeScheduler:
         :meth:`schedule` honours — those are appropriate for the
         save-tail's automatic stream, but a regenerate is the user
         explicitly asking for this character right now. Still serialises
-        through the same single-lane semaphore + per-character lock so
+        through the same shared limiter + per-character lock so
         a concurrent scheduled run can't race-insert two biography rows.
 
         Returns the queue ``item_id`` when ``queue_state`` is wired, so
@@ -323,7 +350,7 @@ class NarrativeScheduler:
         Implementation note (spec deviation, ck3_chronicler-c5wq): the
         spec described a ``bumped_at``-driven dispatch loop, but the
         scheduler doesn't have one — queued items are asyncio.Tasks
-        already awaiting ``self._semaphore.acquire()``, and
+        already awaiting ``self._generation_limiter().acquire()``, and
         ``asyncio.Semaphore`` is FIFO. We therefore implement reorder
         as **cancel-and-respawn**: cancel every currently-queued task,
         then re-enqueue them in the requested order so the new tasks
@@ -383,7 +410,7 @@ class NarrativeScheduler:
             self._queue_state.remove(item.item_id)
 
         # Cancel every queued task. Cancel takes effect when each task's
-        # await on self._semaphore yields — which it must, because
+        # await on the generation limiter yields — which it must, because
         # CancelledError is delivered the next time the coroutine is
         # resumed. We then await each one to be sure the queue_state
         # has been updated before re-enqueueing.
@@ -423,7 +450,7 @@ class NarrativeScheduler:
         # out instead of leaking as an uncaught CancelledError. The
         # `finally` clears the item_id→task index regardless of outcome.
         try:
-            async with self._semaphore:
+            async with self._generation_limiter():
                 lock = self._locks.setdefault(character_id, asyncio.Lock())
                 async with lock:
                     start_loop_time = asyncio.get_running_loop().time()

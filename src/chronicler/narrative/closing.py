@@ -432,7 +432,11 @@ async def generate_closing_chronicle(
                 "tracked_count": str(len(tracked_ids)),
             },
         )
-        response = await provider.generate(request)
+        # Issue #29: hold the provider's shared concurrency permit so the
+        # closing chronicle can't run alongside the scheduler's biography
+        # fan-out (a local Ollama/LM Studio preset tolerates only one).
+        async with provider.generation_limiter():
+            response = await provider.generate(request)
     except Exception as e:
         log.exception("closing-chronicle generation failed for campaign %s", campaign_id)
         return ClosingOutcome(
