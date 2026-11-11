@@ -286,26 +286,28 @@ def test_scheduler_provisioning_seam_lives_in_dependencies() -> None:
     """ck3_chronicler-z5os: scheduler provisioning is one seam in the
     dependencies module, not a function borrowed across route modules.
 
-    The architectural guarantee: settings.py can provision a scheduler
-    for its llm-pause drain without importing from the characters route
-    module. We assert (a) the function lives in dependencies, (b) the
-    characters route still exposes it (as a re-export) so existing
-    importers keep working, and (c) the settings module no longer
-    references the characters route module in its source.
+    The architectural guarantee: the settings llm-pause module can
+    provision a scheduler for its drain without importing from the
+    characters route module. We assert (a) the function lives in
+    dependencies, (b) the characters route still exposes it (as a
+    re-export) so existing importers keep working, and (c) the
+    llm-pause module no longer references the characters route module
+    in its source.
     """
     import inspect
 
     from chronicler.api import dependencies
-    from chronicler.api.routes import characters, settings
+    from chronicler.api.routes import characters
+    from chronicler.api.routes.settings import llm_pause
 
     # (a) The seam lives in dependencies and is the same object the
     #     characters route re-exports.
     assert hasattr(dependencies, "resolve_or_build_scheduler")
     assert characters._resolve_or_build_scheduler is dependencies.resolve_or_build_scheduler
 
-    # (c) settings.py provisions via the dependencies seam, never by
-    #     reaching across into the characters route module.
-    settings_src = inspect.getsource(settings)
+    # (c) the llm-pause module provisions via the dependencies seam, never
+    #     by reaching across into the characters route module.
+    settings_src = inspect.getsource(llm_pause)
     assert "routes.characters" not in settings_src
     assert "resolve_or_build_scheduler" in settings_src
 
