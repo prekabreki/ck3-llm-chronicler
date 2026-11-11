@@ -89,6 +89,47 @@ def test_update_preserves_unknown_keys(tmp_path: Path) -> None:
     assert after["save_dir"] == "Y"
 
 
+def test_update_quarantines_corrupt_json_and_preserves_bytes(tmp_path: Path) -> None:
+    """Audit H3: a trailing-comma typo must not silently wipe the rest of
+    the settings file. The unreadable original is moved aside byte-for-byte
+    and the update is written from an empty baseline."""
+    target = _path(tmp_path)
+    original = '{"prose_repo_path": "/x", "narrative_backend": "claude-code",}'
+    target.write_text(original, encoding="utf-8")
+
+    update_settings({"save_dir": "/saves"}, path=target)
+
+    assert load_settings(path=target) == {"save_dir": "/saves"}
+    backups = list(tmp_path.glob("settings.json.corrupt-*"))
+    assert len(backups) == 1
+    assert backups[0].read_text(encoding="utf-8") == original
+
+
+def test_update_quarantines_non_object_json_and_preserves_bytes(tmp_path: Path) -> None:
+    """A valid JSON array is not the settings schema; the update must not
+    overwrite it without preserving the original bytes."""
+    target = _path(tmp_path)
+    original = "[1, 2, 3]"
+    target.write_text(original, encoding="utf-8")
+
+    update_settings({"save_dir": "/saves"}, path=target)
+
+    assert load_settings(path=target) == {"save_dir": "/saves"}
+    backups = list(tmp_path.glob("settings.json.corrupt-*"))
+    assert len(backups) == 1
+    assert backups[0].read_text(encoding="utf-8") == original
+
+
+def test_update_missing_file_starts_empty_without_backup(tmp_path: Path) -> None:
+    """A missing file is a clean slate, not corruption: no backup is made."""
+    target = _path(tmp_path)
+
+    update_settings({"save_dir": "/saves"}, path=target)
+
+    assert load_settings(path=target) == {"save_dir": "/saves"}
+    assert list(tmp_path.glob("settings.json.corrupt-*")) == []
+
+
 def test_concurrent_updates_do_not_drop_keys(tmp_path: Path) -> None:
     """ck3_chronicler-27ov.80 (audit L26): many threads each writing a
     distinct key must all survive. Without the lock the read-merge-write

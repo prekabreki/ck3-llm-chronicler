@@ -22,6 +22,7 @@ import logging
 import os
 import tempfile
 import threading
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -63,6 +64,61 @@ def load_settings(*, path: Path | None = None) -> dict[str, Any]:
     return data
 
 
+def _corrupt_backup_path(target: Path) -> Path:
+    """Return a timestamped sibling path for a quarantined settings file."""
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+    backup = target.with_name(f"{target.name}.corrupt-{stamp}")
+    counter = 1
+    while backup.exists():
+        backup = target.with_name(f"{target.name}.corrupt-{stamp}-{counter}")
+        counter += 1
+    return backup
+
+
+def _quarantine_corrupt(target: Path) -> None:
+    """Move an unusable settings file aside, preserving its original bytes.
+
+    The move happens before the next write so an update never destroys a
+    hand-edited or concurrently locked settings file. If the move itself
+    fails, the exception propagates and the caller leaves the file alone.
+    """
+    backup = _corrupt_backup_path(target)
+    os.replace(target, backup)
+    log.warning(
+        "settings file at %s could not be read or is not a JSON object; "
+        "preserved the original at %s",
+        target,
+        backup,
+    )
+
+
+def _read_settings_for_update(target: Path) -> dict[str, Any]:
+    """Read settings for a read-merge-write, quarantining an unusable file.
+
+    A missing file is a clean slate. A file that exists but cannot be read
+    (including a transient ``OSError``) or does not hold a JSON object is
+    moved aside to a timestamped ``.corrupt-`` sibling before the merge
+    proceeds. This mirrors :func:`load_settings` (which still treats both
+    cases as empty for reads) while keeping an update from overwriting it.
+    """
+    try:
+        raw = target.read_bytes()
+    except FileNotFoundError:
+        return {}
+    except OSError:
+        _quarantine_corrupt(target)
+        return {}
+    try:
+        data = json.loads(raw.decode("utf-8"))
+    except ValueError:
+        _quarantine_corrupt(target)
+        return {}
+    if not isinstance(data, dict):
+        _quarantine_corrupt(target)
+        return {}
+    return data
+
+
 def save_settings(payload: dict[str, Any], *, path: Path | None = None) -> None:
     """Write ``payload`` atomically.
 
@@ -94,7 +150,8 @@ def update_settings(updates: dict[str, Any], *, path: Path | None = None) -> dic
     (ck3_chronicler-27ov.80, audit L26).
     """
     with _update_lock:
-        current = load_settings(path=path)
+        target = path or DEFAULT_SETTINGS_PATH
+        current = _read_settings_for_update(target)
         for k, v in updates.items():
             if v is None:
                 current.pop(k, None)
