@@ -1,10 +1,10 @@
 """Narrative scheduling for the live ingest loop.
 
-When the tailer ingests a death event for a tracked character, the
-orchestrator (V02-N03) needs to run as a background task so it never
-blocks the next debug.log line. All background LLM work shares the
-provider's concurrency limiter (a local model can only generate one
-response at a time).
+When the save ingest loop records a death event for a tracked character,
+the orchestrator needs to run as a background task so it never blocks
+ingest. All background LLM work shares the provider's concurrency
+limiter, whose width comes from
+:attr:`~chronicler.narrative.provider.NarrativeProvider.max_concurrent`.
 
 :class:`NarrativeScheduler` owns:
 

@@ -28,7 +28,7 @@ Phases:
    the session.
 2. **Generate** — call ``provider.generate(request)`` with no DB
    connection held. This is the slow part (seconds to minutes per
-   call on a 14B local model).
+   call, depending on the transport and model).
 3. **Persist** — open a fresh session, insert the biography row,
    close.
 
@@ -39,8 +39,8 @@ generation must never block ingest.
 
 Token-budget guard: if a character's event log exceeds
 ``MAX_EVENTS_PER_BIOGRAPHY`` (default 200), a WARNING is logged. The
-real summarisation pass (a "memory consolidation" lite) lands at v0.5
-when the yearly_pulse pipeline arrives.
+warning is the only signal; the full event list is handed to the model
+unchanged.
 """
 
 from __future__ import annotations

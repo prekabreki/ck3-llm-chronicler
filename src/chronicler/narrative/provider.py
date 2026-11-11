@@ -67,20 +67,20 @@ class NarrativeResponse:
 class NarrativeProvider(ABC):
     """The narrative-generation seam.
 
-    Two production transports implement it (ck3_chronicler-cs1o,
-    superseding the ihkv single-backend decision after Anthropic's
-    2026-06-15 programmatic-credit split moved ``claude --print`` onto
-    a metered monthly pool):
+    Three production transports implement it:
 
     - :class:`chronicler.narrative.claude_code.ClaudeCodeProvider` —
       shells out to ``claude --print``; billed against the
       subscription's monthly programmatic credit. The default.
     - :class:`chronicler.narrative.anthropic.AnthropicProvider` —
-      direct Messages API on ``ANTHROPIC_API_KEY``; the fallback for
-      pool exhaustion. Selected via
-      ``CHRONICLER_NARRATIVE_BACKEND=anthropic``.
+      direct Messages API on ``ANTHROPIC_API_KEY``; selected with the
+      ``anthropic`` backend id.
+    - :class:`chronicler.narrative.openai_compatible.OpenAICompatibleProvider`
+      — one OpenAI-compatible protocol covering OpenAI, DeepSeek,
+      OpenRouter, Ollama and LM Studio; selected with the
+      ``openai-compatible`` backend id.
 
-    Both are pure transports: model choice is shared
+    All three are pure transports: model choice is shared
     (``narrative.model_resolution``) and the shared generation runner
     (``narrative.runner``) writes identical prose-repo artifacts for
     whichever one ran — switching backends changes who gets billed,
