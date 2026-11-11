@@ -92,6 +92,8 @@ design/scratch/
 # Claude Code runtime
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
+# Per-session scratch state; lives on the machine, not in the repo.
+.claude/session-state.md
 
 # Playwright MCP scratch
 .playwright-mcp/

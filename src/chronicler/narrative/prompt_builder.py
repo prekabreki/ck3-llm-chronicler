@@ -586,7 +586,7 @@ def _build_user_prompt(
 
     # ck3_chronicler-6ui: optional raw character record. Opt-in because
     # the JSON blob can be ~5-15 KB per character and adds materially to
-    # the prompt token cost on a 14B local model. When enabled, the LLM
+    # the prompt token cost. When enabled, the LLM
     # gets fields the structured parser doesn't extract (culture-specific
     # data, adventurer state, title hierarchies, etc.).
     #
