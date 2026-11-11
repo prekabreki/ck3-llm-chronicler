@@ -11,9 +11,7 @@ from chronicler.narrative.factory import (
     resolve_backend,
 )
 from chronicler.narrative.pipeline import GenerationOutcome, generate_biography
-from chronicler.narrative.prompt_builder import (
-    PROMPT_TEMPLATE_VERSION as _BIOGRAPHY_VERSION,
-)
+from chronicler.narrative.prompt_builder import VERSION_BY_KIND as _VERSION_BY_KIND
 from chronicler.narrative.prose_io import render_briefing_markdown
 from chronicler.narrative.provider import (
     NarrativeProvider,
@@ -27,9 +25,7 @@ from chronicler.narrative.provider import (
 # single source of truth for its own value; this dict just centralises
 # the lookup so dashboards / cost reports can iterate without reaching
 # into private module names.
-NARRATIVE_PROMPT_VERSIONS: dict[str, str] = {
-    "biography": _BIOGRAPHY_VERSION,
-}
+NARRATIVE_PROMPT_VERSIONS: dict[str, str] = dict(_VERSION_BY_KIND)
 
 
 __all__ = [

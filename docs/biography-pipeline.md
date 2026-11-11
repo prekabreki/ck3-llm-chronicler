@@ -125,8 +125,11 @@ a dev shell drained the owner's API credits through inherited env.
    logs a warning and the biography stays on disk.
 
 8. **Pipeline persists the row.** A fresh session inserts a `Biography` with the body,
-   `provider="<prefix>:<model>"`, token counts, `events_through_event_id`, and `version=N`.
-   It is now visible in the web UI and at `GET /api/campaigns/{name}/characters/{ck3_id}/biography`.
+   `provider="<prefix>:<model>"`, token counts, `events_through_event_id`, `version=N`, and
+   `system_prompt_sha256` (the first 16 hex chars of the assembled system prompt's SHA-256,
+   so the row is tied to the exact editable prose rules that produced it). The
+   `prompt_template_version` tag is derived from the request kind. It is now visible in the
+   web UI and at `GET /api/campaigns/{name}/characters/{ck3_id}/biography`.
 
 Manual regeneration (`chronicler regenerate-biography <ck3_id> --campaign <name>`, or the
 Regenerate button) bypasses the scheduler's tracked-set and pause gates but runs the same

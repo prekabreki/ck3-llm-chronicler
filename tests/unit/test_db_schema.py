@@ -55,6 +55,12 @@ def test_alembic_upgrade_head_produces_v02_schema(tmp_path: Path) -> None:
     missing = (EXPECTED_TABLES | EXPECTED_FTS5_VIRTUAL_TABLES) - actual
     assert not missing, f"missing tables after migration: {missing}"
 
+    with sqlite3.connect(db_path) as conn:
+        bio_cols = {row[1]: row for row in conn.execute("PRAGMA table_info(biographies)")}
+    assert "system_prompt_sha256" in bio_cols, "issue #28 column missing"
+    # PRAGMA table_info: (cid, name, type, notnull, dflt_value, pk) — nullable.
+    assert bio_cols["system_prompt_sha256"][3] == 0
+
 
 def _alembic_upgrade(repo_root: Path, env: dict[str, str], rev: str) -> None:
     """Run ``alembic upgrade <rev>`` the same way the head-schema test does."""

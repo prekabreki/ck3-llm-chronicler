@@ -45,6 +45,7 @@ when the yearly_pulse pipeline arrives.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -230,16 +231,10 @@ async def generate_biography(
         )
 
     # Assemble the prompt (pure; no DB session held). build_briefing
-    # picks the prompt path + version from the mode config and infers
-    # the request kind (biography vs biography_woven).
-    # ck3_chronicler-me4: read the mode at call time (not import time) so
-    # monkeypatching the config in tests works.
-    import chronicler.config as _cfg
-
-    _mode = getattr(_cfg, "BIOGRAPHY_WORLDBUILDING_MODE", "scene_setter")
+    # infers the request kind (biography vs biography_woven) and derives
+    # the prompt-version tag from it.
     briefing = build_briefing(
         inputs,
-        mode=_mode,
         include_raw_record=include_raw_record,
     )
 
@@ -257,12 +252,17 @@ async def generate_biography(
     # queue item the user sees) rather than an exception escaping into
     # the ingest layer, which must never block on biography generation.
     try:
+        system_prompt = assemble_system_prompt(
+            prose_repo=provider.prose_repo_path, kind=briefing.kind
+        )
+        # Issue #28: record the first 16 hex chars of the assembled
+        # system prompt's SHA-256 so a biography row can be tied to the
+        # exact editable prose rules that produced it.
+        system_prompt_sha256 = hashlib.sha256(system_prompt.encode("utf-8")).hexdigest()[:16]
         request = NarrativeRequest(
             kind=briefing.kind,
             prompt_version=briefing.prompt_version,
-            system_prompt=assemble_system_prompt(
-                prose_repo=provider.prose_repo_path, kind=briefing.kind
-            ),
+            system_prompt=system_prompt,
             user_prompt=briefing.user_prompt,
             metadata=metadata,
         )
@@ -282,6 +282,7 @@ async def generate_biography(
             character_id=character_id,
             body=response.text,
             prompt_template_version=briefing.prompt_version,
+            system_prompt_sha256=system_prompt_sha256,
             # ck3_chronicler-cs1o: attribute the kind that actually ran —
             # this was hardcoded "biography", mis-attributing woven rows
             # (and corrupting per-provider USD aggregation).

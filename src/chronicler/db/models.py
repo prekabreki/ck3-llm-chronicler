@@ -243,6 +243,10 @@ class Biography(Base):
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     body: Mapped[str] = mapped_column(Text, nullable=False)
     prompt_template_version: Mapped[str] = mapped_column(String, nullable=False)
+    # Issue #28: first 16 hex chars of the assembled system prompt's
+    # SHA-256 — ties a biography to the editable prose rules that
+    # produced it. NULL on pre-#28 rows.
+    system_prompt_sha256: Mapped[str | None] = mapped_column(String, nullable=True)
     provider: Mapped[str] = mapped_column(String, nullable=False)
     # ck3_chronicler-ju7j (Phase 1): model the envelope actually billed
     # (from modelUsage), distinct from ``provider`` which records the
