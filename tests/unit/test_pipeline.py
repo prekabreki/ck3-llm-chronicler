@@ -7,6 +7,7 @@ Ollama or mocking HTTP.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from collections.abc import Iterator
 from pathlib import Path
@@ -22,8 +23,20 @@ from chronicler.db.repository import (
 )
 from chronicler.narrative import generate_biography
 from chronicler.narrative.pipeline import MAX_EVENTS_PER_BIOGRAPHY
-from chronicler.narrative.prompt_builder import PROMPT_TEMPLATE_VERSION
+from chronicler.narrative.prompt_builder import VERSION_BY_KIND
 from tests.helpers.providers import FakeProvider
+
+
+class _ProseProvider(FakeProvider):
+    """FakeProvider whose prose dir is a caller-supplied temp directory."""
+
+    def __init__(self, prose_repo: Path, **kwargs: object) -> None:
+        super().__init__(**kwargs)  # type: ignore[arg-type]
+        self._prose_repo = prose_repo
+
+    @property
+    def prose_repo_path(self) -> Path:
+        return self._prose_repo
 
 
 @pytest.fixture
@@ -70,14 +83,7 @@ def _seed_character_with_events(session: Session, ck3_id: int, count: int = 1) -
 async def test_generate_biography_persists_a_row(
     session: Session,
     factory: sessionmaker[Session],
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Pin the scene_setter (v3) mode so this baseline persistence test
-    # asserts against PROMPT_TEMPLATE_VERSION (which is the v3 constant
-    # by design, see _PROMPT_BY_MODE in pipeline.py). The active default
-    # flipped to woven/v5 on 2026-05-08; the woven path is covered by
-    # test_biography_pipeline_selects_v5_prompt_when_mode_woven.
-    monkeypatch.setattr("chronicler.config.BIOGRAPHY_WORLDBUILDING_MODE", "scene_setter")
     last_event_id = _seed_character_with_events(session, ck3_id=1234, count=3)
     provider = FakeProvider(response_text="Life arc body.")
 
@@ -91,19 +97,52 @@ async def test_generate_biography_persists_a_row(
     bio = get_latest_biography_for_character(session, 1234)
     assert bio is not None
     assert bio.body == "Life arc body."
-    # cs1o: provider tag is kind-resolved (scene_setter → plain biography).
+    # cs1o: provider tag is kind-resolved; #28: tag follows the kind too.
     assert bio.provider == "fake-provider:v1:biography"
-    assert bio.prompt_template_version == PROMPT_TEMPLATE_VERSION
+    assert bio.prompt_template_version == VERSION_BY_KIND["biography"]
     assert bio.events_through_event_id == last_event_id
     assert bio.prompt_tokens == 100
     assert bio.completion_tokens == 50
 
 
 @pytest.mark.asyncio
+async def test_generate_biography_persists_system_prompt_hash(
+    session: Session,
+    factory: sessionmaker[Session],
+    tmp_path: Path,
+) -> None:
+    """Issue #28: the row records the assembled system prompt's hash, and
+    an edit to the prose dir's CLAUDE.md changes it."""
+    prose = tmp_path / "prose"
+    (prose / "voice").mkdir(parents=True)
+    (prose / "CLAUDE.md").write_text("Register v1", encoding="utf-8")
+    (prose / "voice" / "biography.md").write_text("Voice rules", encoding="utf-8")
+    _seed_character_with_events(session, ck3_id=1234, count=1)
+
+    outcome = await generate_biography(1234, factory=factory, provider=_ProseProvider(prose))
+    session.commit()
+
+    assert outcome.error is None
+    bio = get_latest_biography_for_character(session, 1234)
+    assert bio is not None
+    expected = hashlib.sha256(b"Register v1\n\nVoice rules").hexdigest()[:16]
+    assert bio.system_prompt_sha256 == expected
+    first_hash = bio.system_prompt_sha256
+
+    (prose / "CLAUDE.md").write_text("Register v2", encoding="utf-8")
+    outcome = await generate_biography(1234, factory=factory, provider=_ProseProvider(prose))
+    session.commit()
+
+    assert outcome.error is None
+    bio = get_latest_biography_for_character(session, 1234)
+    assert bio is not None
+    assert bio.system_prompt_sha256 != first_hash
+
+
+@pytest.mark.asyncio
 async def test_generate_biography_attributes_woven_kind_and_breakdown(
     session: Session,
     factory: sessionmaker[Session],
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """ck3_chronicler-cs1o: two attribution fixes pinned here.
 
@@ -113,7 +152,6 @@ async def test_generate_biography_attributes_woven_kind_and_breakdown(
     2. The cache breakdown + cost from NarrativeResponse must survive
        onto the row.
     """
-    monkeypatch.setattr("chronicler.config.BIOGRAPHY_WORLDBUILDING_MODE", "woven")
     _seed_character_with_events(session, ck3_id=1234, count=2)
     # Give the character world context so build_briefing selects the
     # woven kind — the block renders only when region_empire_name (or
@@ -325,18 +363,16 @@ def test_biography_prompt_version_tags_survive_the_template_removal() -> None:
     biography on a regeneration. Changing or dropping one silently
     reinterprets existing history, so they are pinned as literals.
 
-    (ck3_chronicler-8ek slice 1 bumped v2 → v3 for the world-context
-    scene-setter; v4 is the withdrawn j7a experiment, which is why the
-    woven mode is v5. That trail now lives in git history rather than in
-    a directory of files nothing reads.)
+    Issue #28 replaced the mode-selected v3/v5 tags with kind-derived
+    ``_v6`` tags. The new strings deliberately never collide with the
+    old (mislabelled) rows; those keep their old tags.
     """
     from chronicler.narrative import prompt_builder
 
-    assert PROMPT_TEMPLATE_VERSION == "biography_v3"
-    assert prompt_builder._resolve_prompt_version("scene_setter") == "biography_v3"
-    assert prompt_builder._resolve_prompt_version("woven") == "biography_v5"
-    # a typo'd config must not break generation
-    assert prompt_builder._resolve_prompt_version("nonsense") == "biography_v3"
+    assert prompt_builder.VERSION_BY_KIND == {
+        "biography": "biography_v6",
+        "biography_woven": "biography_woven_v6",
+    }
 
 
 def test_the_in_repo_prompt_templates_are_gone() -> None:
@@ -856,34 +892,13 @@ def test_upsert_character_female_defaults_null(session: Session) -> None:
 # --- ck3_chronicler-me4: 8ek slice 2 — woven biography prompt ---
 
 
-def test_config_biography_worldbuilding_mode_default_is_woven() -> None:
-    """me4 → tbrm.5 close: chronicler.config exposes
-    BIOGRAPHY_WORLDBUILDING_MODE. Default flipped from 'scene_setter'
-    to 'woven' once the strict 1p50 acceptance gate cleared on
-    biography_v5 (commit 607ee30, 2026-05-08). 'scene_setter' is
-    still selectable for regression A/B."""
-    import chronicler.config as cfg
-
-    assert hasattr(cfg, "BIOGRAPHY_WORLDBUILDING_MODE"), (
-        "config must expose BIOGRAPHY_WORLDBUILDING_MODE for me4 A/B"
-    )
-    assert cfg.BIOGRAPHY_WORLDBUILDING_MODE == "woven", (
-        f"default mode must be woven (flipped 2026-05-08 after 1p50), got "
-        f"{cfg.BIOGRAPHY_WORLDBUILDING_MODE!r}"
-    )
-
-
 @pytest.mark.asyncio
-async def test_biography_pipeline_selects_v5_prompt_when_mode_woven(
-    session: Session, factory: sessionmaker[Session], monkeypatch: pytest.MonkeyPatch
+async def test_biography_pipeline_tags_woven_kind_from_world_context(
+    session: Session, factory: sessionmaker[Session]
 ) -> None:
-    """me4: when BIOGRAPHY_WORLDBUILDING_MODE = 'woven', the pipeline
-    loads biography_v5.md as the system prompt and tags both the
-    request and the persisted biography row with prompt_template_version
-    = 'biography_v5'. Default-mode tests cover scene_setter unchanged."""
+    """Issue #28: world context selects biography_woven, and both the
+    request and the persisted row carry that kind's own version tag."""
     import json as _json
-
-    monkeypatch.setattr("chronicler.config.BIOGRAPHY_WORLDBUILDING_MODE", "woven")
 
     summary = {
         "region_empire_key": "e_scandinavia",
@@ -911,8 +926,8 @@ async def test_biography_pipeline_selects_v5_prompt_when_mode_woven(
     assert outcome.error is None
     assert len(provider.seen_requests) == 1
     request = provider.seen_requests[0]
-    assert request.prompt_version == "biography_v5", (
-        f"expected biography_v5 in woven mode, got {request.prompt_version!r}"
+    assert request.prompt_version == "biography_woven_v6", (
+        f"expected biography_woven_v6 for the woven kind, got {request.prompt_version!r}"
     )
     # The version tag is now the whole signal: issue #19 stopped loading
     # biography_v5.md into system_prompt (every provider discarded it),
@@ -924,7 +939,7 @@ async def test_biography_pipeline_selects_v5_prompt_when_mode_woven(
 
     bio = get_latest_biography_for_character(session, 4250)
     assert bio is not None
-    assert bio.prompt_template_version == "biography_v5"
+    assert bio.prompt_template_version == "biography_woven_v6"
 
 
 def test_shipped_woven_voice_file_contains_the_woven_constraints() -> None:

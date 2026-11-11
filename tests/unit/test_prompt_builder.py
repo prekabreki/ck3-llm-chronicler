@@ -55,11 +55,11 @@ def test_build_briefing_assembles_all_three_fields_without_db() -> None:
     register is assembled from the prose dir at request-construction
     time, which keeps this builder free of filesystem reads.
     """
-    briefing = build_briefing(_inputs(_char()), mode="scene_setter")
+    briefing = build_briefing(_inputs(_char()))
 
     assert isinstance(briefing, Briefing)
     assert briefing.kind == "biography"
-    assert briefing.prompt_version == "biography_v3"
+    assert briefing.prompt_version == "biography_v6"
     assert not hasattr(briefing, "system_prompt")
     assert "Known names: Sigtrygg Hardrada" in briefing.user_prompt
     assert "Gender: man" in briefing.user_prompt
@@ -67,15 +67,25 @@ def test_build_briefing_assembles_all_three_fields_without_db() -> None:
     assert "Recorded events: (none)" in briefing.user_prompt
 
 
-def test_mode_selects_prompt_version() -> None:
-    assert build_briefing(_inputs(_char()), mode="scene_setter").prompt_version == "biography_v3"
-    assert build_briefing(_inputs(_char()), mode="woven").prompt_version == "biography_v5"
-    # Unknown mode falls back to the scene-setter (v3) tuple.
-    assert build_briefing(_inputs(_char()), mode="nonsense").prompt_version == "biography_v3"
+def test_version_tag_is_derived_from_kind() -> None:
+    """Issue #28: the tag follows the kind that actually ran, not a mode."""
+    plain = build_briefing(_inputs(_char()))
+    region = json.dumps(
+        {
+            "region_empire_name": "Scandinavia",
+            "self_realm": {"kingdom_name": "Norway", "culture": "norse", "faith": "asatru"},
+        }
+    )
+    woven = build_briefing(_inputs(_char(region_summary_json=region)))
+
+    assert plain.kind == "biography"
+    assert plain.prompt_version == "biography_v6"
+    assert woven.kind == "biography_woven"
+    assert woven.prompt_version == "biography_woven_v6"
 
 
 def test_kind_is_biography_without_world_context() -> None:
-    assert build_briefing(_inputs(_char()), mode="scene_setter").kind == "biography"
+    assert build_briefing(_inputs(_char())).kind == "biography"
 
 
 def test_kind_is_woven_when_world_context_renders() -> None:
@@ -85,10 +95,7 @@ def test_kind_is_woven_when_world_context_renders() -> None:
             "self_realm": {"kingdom_name": "Norway", "culture": "norse", "faith": "asatru"},
         }
     )
-    briefing = build_briefing(
-        _inputs(_char(region_summary_json=region)),
-        mode="scene_setter",
-    )
+    briefing = build_briefing(_inputs(_char(region_summary_json=region)))
     assert briefing.kind == "biography_woven"
     assert "World context (Scandinavia" in briefing.user_prompt
     assert "Self: Norway — norse, asatru." in briefing.user_prompt
@@ -110,7 +117,7 @@ def test_relation_labels_decorate_the_glossary() -> None:
         _char(raw_record_json=family),
         names_map={100: "Sigtrygg", 200: "Harald", 300: "Gyda"},
     )
-    user_prompt = build_briefing(inputs, mode="scene_setter").user_prompt
+    user_prompt = build_briefing(inputs).user_prompt
 
     assert "200 = Harald (father)" in user_prompt
     assert "300 = Gyda (spouse)" in user_prompt
@@ -129,7 +136,7 @@ def test_relation_reverse_scan_via_related_snapshots() -> None:
         name_genders={200: False},  # male -> father
         related_snapshots={200: parent_record},
     )
-    user_prompt = build_briefing(inputs, mode="scene_setter").user_prompt
+    user_prompt = build_briefing(inputs).user_prompt
     assert "200 = Harald (father)" in user_prompt
 
 
@@ -143,7 +150,7 @@ def test_events_render_chronologically_in_user_prompt() -> None:
             payload_json=json.dumps({"p": {"title_key": "k_norway"}}),
         ),
     ]
-    user_prompt = build_briefing(_inputs(_char(), events=events), mode="scene_setter").user_prompt
+    user_prompt = build_briefing(_inputs(_char(), events=events)).user_prompt
     assert "Recorded events (chronological):" in user_prompt
     assert "[1085-01-01]" in user_prompt
 
@@ -152,9 +159,9 @@ def test_include_raw_record_appends_block_only_when_opted_in() -> None:
     raw = json.dumps({"some": "extra detail"})
     char = _char(raw_record_json=raw)
 
-    without = build_briefing(_inputs(char), mode="scene_setter", include_raw_record=False)
+    without = build_briefing(_inputs(char), include_raw_record=False)
     assert "Full character record from save" not in without.user_prompt
 
-    with_raw = build_briefing(_inputs(char), mode="scene_setter", include_raw_record=True)
+    with_raw = build_briefing(_inputs(char), include_raw_record=True)
     assert "Full character record from save" in with_raw.user_prompt
     assert raw in with_raw.user_prompt

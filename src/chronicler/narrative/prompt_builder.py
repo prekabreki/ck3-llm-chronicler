@@ -16,8 +16,8 @@ unit-testable on hand-built structs without a live DB or LLM.
 The single composition entry point is :func:`build_briefing`. The
 orchestrator (:func:`chronicler.narrative.pipeline.generate_biography`)
 gathers a :class:`BiographyInputs` in its read phase and calls
-``build_briefing(inputs, mode=..., include_raw_record=...)`` between the
-read and the provider call.
+``build_briefing(inputs, include_raw_record=...)`` between the read and
+the provider call.
 """
 
 from __future__ import annotations
@@ -38,11 +38,14 @@ from chronicler.narrative.provider import PromptKind
 # character's de jure region (Character.region_summary_json non-NULL).
 # v3 → v5 in ck3_chronicler-me4 slice 2: same world-context data, but
 # threaded through the biography body via constraint-11 rewrite instead
-# of a discrete top paragraph. Selected at generation time by
-# chronicler.config.BIOGRAPHY_WORLDBUILDING_MODE. (v4 is occupied by
-# the withdrawn ck3_chronicler-j7a experiment; v5 is the next free
-# active-prompt slot.) Existing biography rows retain the older tags
-# so we can tell which prompt produced which output.
+# of a discrete top paragraph. (v4 is occupied by the withdrawn
+# ck3_chronicler-j7a experiment.)
+# Issue #28: the tag is derived from the request kind, not from a config
+# switch. The old ``BIOGRAPHY_WORLDBUILDING_MODE`` changed nothing but
+# the tag — the voice file sent is already chosen by the kind in
+# ``build_briefing`` — so every non-woven row was mislabelled. The new
+# ``_v6`` strings deliberately do not collide with those mislabelled
+# ``v3``/``v5`` rows; existing rows keep their old tags.
 # Issue #20: these used to be (version, path) pairs pointing at
 # ``narrative/prompts/*.md``. Issue #19 stopped loading those files (every
 # provider discarded the result), and the 0224 migration had already
@@ -53,12 +56,10 @@ from chronicler.narrative.provider import PromptKind
 # they are how you tell which rules produced which biography on a
 # regeneration. The rules themselves now live in the user's prose
 # directory, where they are editable and actually reach the model.
-_VERSION_BY_MODE: dict[str, str] = {
-    "scene_setter": "biography_v3",
-    "woven": "biography_v5",
+VERSION_BY_KIND: dict[str, str] = {
+    "biography": "biography_v6",
+    "biography_woven": "biography_woven_v6",
 }
-# Default-mode version is re-exported from chronicler.narrative.
-PROMPT_TEMPLATE_VERSION = _VERSION_BY_MODE["scene_setter"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -142,17 +143,6 @@ class Briefing:
     kind: PromptKind
     prompt_version: str
     user_prompt: str
-
-
-def _resolve_prompt_version(mode: str) -> str:
-    """Map a ``BIOGRAPHY_WORLDBUILDING_MODE`` value to its version tag.
-
-    Unknown values fall back to the scene-setter (v3) tag — keeps a
-    typo'd config from breaking generation. Issue #20 dropped the path
-    half of the old ``(version, path)`` tuple along with the prompt files
-    it pointed at.
-    """
-    return _VERSION_BY_MODE.get(mode, _VERSION_BY_MODE["scene_setter"])
 
 
 def _build_relation_labels(
@@ -663,16 +653,12 @@ def _build_user_prompt(
 def build_briefing(
     inputs: BiographyInputs,
     *,
-    mode: str,
     include_raw_record: bool = False,
 ) -> Briefing:
     """Compose a complete :class:`Briefing` from read-phase inputs.
 
     Pure: no DB, no provider, no clock. This is the seam the
     orchestrator calls between its read and generate phases.
-
-    ``mode`` is the active ``BIOGRAPHY_WORLDBUILDING_MODE``; it selects
-    the prompt template version + path via :func:`_resolve_prompt`.
 
     ``kind`` is ``"biography_woven"`` when the character carries a
     renderable world-context block, else ``"biography"`` — this still
@@ -713,7 +699,9 @@ def build_briefing(
     # each biography row so we can tell which template era produced it.
     # Issue #20 removed the template files themselves; the rules live in
     # the user's prose dir (voice/<kind>.md), read per generation.
-    version = _resolve_prompt_version(mode)
+    # Issue #28: derive the tag from the kind that actually ran, so the
+    # row matches the voice file that shaped the prose.
+    version = VERSION_BY_KIND[kind]
 
     return Briefing(
         kind=kind,

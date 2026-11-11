@@ -68,16 +68,6 @@ CHRONICLER_PROSE_REPO_PATH_ENV = "CHRONICLER_PROSE_REPO_PATH"
 # Issue #24: where sealed-campaign snapshots live. Same precedence.
 CHRONICLER_ARCHIVE_DIR_ENV = "CHRONICLER_ARCHIVE_DIR"
 
-# ck3_chronicler-me4 (8ek slice 2): A/B switch for the death-biography
-# prompt path. "scene_setter" (default) selects biography_v3 — slice 1's
-# discrete scene-setter paragraph at the top of the biography. "woven"
-# selects biography_v5 — region facts threaded through the biography
-# body wherever a recorded event touches them. Flip to "woven" to
-# evaluate; flip back to revert. (v4 is occupied by the withdrawn j7a
-# experiment; the active prompt set picked v5 as the next free slot.)
-BiographyWorldbuildingMode = Literal["scene_setter", "woven"]
-BIOGRAPHY_WORLDBUILDING_MODE: BiographyWorldbuildingMode = "woven"
-
 
 def get_ck3_debug_log() -> Path:
     """CK3's resolved debug.log path.
